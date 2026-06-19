@@ -7,7 +7,7 @@ status: proposed
 # ADR-0002 — Dafny as the v0 verification backend
 
 > **Date:** 2026-05-22 · **Deciders:** project initial author; open for review.
-> **Related:** `PLAN.md` §2.6, §4.3; `docs/verification-internals.md`.
+> **Related:** `PLAN.md` §2.6, §4.3; `docs/reference/verification-internals.md`.
 
 ---
 
@@ -15,7 +15,7 @@ status: proposed
 
 Loom v0's architectural commitment (`PLAN.md` §2.6) is to compose with existing verifiers rather than invent verification semantics. This requires choosing a specific verifier as the v0 backend. The choice is high-stakes: the verifier's semantics define what Loom's claims mean operationally, the verifier's tooling sets the pace of Loom's development, and the verifier's user base affects who can engage with the project's results.
 
-The decision is also reversible in principle (a `Verifier` trait abstracts the backend, per `docs/verification-internals.md` §8) and irreversible in practice (the trait's interface will reflect the v0 backend's idioms, and reimplementing those idioms for a second backend is non-trivial work).
+The decision is also reversible in principle (a `Verifier` trait abstracts the backend, per `docs/reference/verification-internals.md` §8) and irreversible in practice (the trait's interface will reflect the v0 backend's idioms, and reimplementing those idioms for a second backend is non-trivial work).
 
 The candidates considered are Dafny, F*, direct Z3 (with a custom refinement-type layer), Lean 4, Liquid Haskell, and Why3.
 
@@ -35,7 +35,7 @@ Requirements:
 
 Adopt **Dafny** as the v0 verification backend.
 
-The Loom compiler translates umbrellas to `.dfy` files (per the encoding in `docs/verification-internals.md`) and invokes `dafny verify` as a subprocess. The backend is encapsulated in `crates/loom-compile-dafny` behind the `Verifier` trait.
+The Loom compiler translates umbrellas to `.dfy` files (per the encoding in `docs/reference/verification-internals.md`) and invokes `dafny verify` as a subprocess. The backend is encapsulated in `crates/loom-compile-dafny` behind the `Verifier` trait.
 
 Dafny version is pinned (specific version per a future `ADR-0014`). Z3 version is pinned to whatever Dafny version ships with by default.
 
@@ -97,7 +97,7 @@ Dafny version is pinned (specific version per a future `ADR-0014`). Z3 version i
 - Couples Loom's semantics to Dafny's idioms. Future divergence is a refactor (mitigated by the `Verifier` trait abstraction, but mitigated only partially because the trait's interface will reflect Dafny's vocabulary).
 - Dafny is method-centric: methods with pre/post are the primary unit. Loom's register structure does not map onto methods alone; some encoding effort is required (lemmas for `proves`, function methods for `relates` + `does`, test methods for `shows`).
 - Dafny is implemented in C# / .NET. Cross-platform distribution works but the dependency footprint includes a .NET runtime.
-- Some claims that are natural in Loom (existentials, higher-rank quantification) are awkward or unsupported in Dafny. These are documented as limitations in `docs/verification-internals.md` §6.
+- Some claims that are natural in Loom (existentials, higher-rank quantification) are awkward or unsupported in Dafny. These are documented as limitations in `docs/reference/verification-internals.md` §6.
 
 ---
 
@@ -128,7 +128,7 @@ Dafny version is pinned (specific version per a future `ADR-0014`). Z3 version i
 If Loom needs to switch backends post-v0, the work involves:
 
 1. Implementing a new crate (e.g., `crates/loom-compile-fstar`) that mirrors `loom-compile-dafny`'s structure.
-2. Designing the encoding choices for the new backend (the F* counterpart of `docs/verification-internals.md`).
+2. Designing the encoding choices for the new backend (the F* counterpart of `docs/reference/verification-internals.md`).
 3. Updating examples that exercise Dafny-specific encoding limitations to use the new backend's stronger features.
 4. Retargeting CI to install and pin the new verifier.
 
@@ -138,8 +138,8 @@ This is meaningful but bounded work, on the order of weeks for a single experien
 
 ## Implementation notes
 
-- The Dafny encoding is documented in `docs/verification-internals.md`.
-- The `Verifier` trait is documented in `docs/verification-internals.md` §1.
+- The Dafny encoding is documented in `docs/reference/verification-internals.md`.
+- The `Verifier` trait is documented in `docs/reference/verification-internals.md` §1.
 - Dafny version pinning is the subject of a future `ADR-0014`.
 - Counterexample mapping is implemented in `crates/loom-verify/src/counterexample.rs`.
 
