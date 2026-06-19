@@ -14,7 +14,7 @@ the experiment harness and loom-light implementation work, and
 | **Rust** | `rust` devcontainer feature; deps via `Cargo.lock` | the experiment harness **and** loom-light implementation |
 | **aiwf** | `go install …@v0.15.1` (pinned release) | planning + provenance for this repo |
 | **Claude Code CLI** | `claude.ai/install.sh` | agent workflows |
-| **Node 22, gh, zsh** | devcontainer features | tooling + GitHub access |
+| **gh, zsh** | devcontainer features | GitHub access + shell |
 
 Pinned versions live at the top of [`init.sh`](init.sh) (`AIWF_VERSION`,
 `DAFNY_VERSION`) — the only knobs to bump. The harness's Rust dependencies are
