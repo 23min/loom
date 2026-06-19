@@ -7,7 +7,7 @@ status: proposed
 # ADR-0003 — Python as the v0 target language for code generation
 
 > **Date:** 2026-05-22 · **Deciders:** project initial author; open for review.
-> **Related:** `PLAN.md` §4.4, §5.3; `docs/verification-internals.md` §3.
+> **Related:** `PLAN.md` §4.4, §5.3; `docs/reference/verification-internals.md` §3.
 
 ---
 
@@ -119,7 +119,7 @@ Generated artifacts are pure Python modules in `generated/<module_name>/`, using
 
 ## Implementation notes
 
-- Codegen rules are documented in `docs/verification-internals.md` §3.
+- Codegen rules are documented in `docs/reference/verification-internals.md` §3.
 - Generated artifacts go to `generated/<module_name>/` by default; users can override with `--output`.
 - The translator emits Python type annotations on all function signatures for editor and `mypy` support. Refinement type constraints are encoded as docstring comments and, optionally, as `assert` statements.
 - The translator emits `pytest` test files for `shows` examples; tests run with `pytest generated/<module_name>/tests/`.
@@ -141,6 +141,6 @@ The current single-target choice does not bias these future decisions. The codeg
 ## References
 
 - `PLAN.md` §4.4 (target language compilation), §5.3 (multi-target deferred to post-v0).
-- `docs/verification-internals.md` §3 (execution-direction translation).
+- `docs/reference/verification-internals.md` §3 (execution-direction translation).
 - Python dataclasses: https://docs.python.org/3/library/dataclasses.html
 - pytest: https://docs.pytest.org/
