@@ -29,10 +29,12 @@ Deliverables:
   an implementation, identical prose intent; they differ **only** in the grading clause
   (spec audited for completeness vs graded only on `dafny verify` passing). Holding the
   task constant isolates the incentive as the sole variable; we score only the spec.
-- `mutate_and_score.py` — pairs each spec-under-test with the gold impl and every
-  mutant, runs `dafny verify`, classifies killed / survived / inconclusive, and
-  computes kill-rate. **Parameterized by model** (for the M-0002 sweep).
-- `run.sh` — calls the API per condition × trial × model and prints the table.
+- a Rust harness (`Cargo.toml` + `src/main.rs`, deps pinned by `Cargo.lock`) — calls
+  the Anthropic API, pairs each spec-under-test with the gold impl and every mutant,
+  runs `dafny verify`, classifies killed / survived / inconclusive, and computes
+  kill-rate. **Parameterized by model** (for the M-0002 sweep). The shell-out to
+  `dafny verify` is a deliberate micro-prototype of loom-light's verifier path.
+- `run.sh` — a thin `cargo run` wrapper over the harness; prints the table.
 
 Definition of done is the §3 Step-0 calibration, captured by the ACs below: the gold
 spec verifies and kills all 8 mutants. (The Dafny may need a one-line syntax fix on
@@ -52,6 +54,7 @@ Run against the mutant bank, the gold spec fails to verify every mutant (kill-ra
 
 ### AC-3 — experiment harness materialized and runnable
 
-`canonicalize.dfy`, `mutants/`, `prompts/`, `mutate_and_score.py`, and `run.sh` exist
-under `experiments/loom-ultralight/` and run end-to-end; a dry (no-API) mode is enough
-to prove the scoring path — the live multi-model run is M-0002.
+`canonicalize.dfy`, `mutants/`, `prompts/`, the Rust harness (`Cargo.toml` +
+`src/main.rs`), and `run.sh` exist under `experiments/loom-ultralight/` and run
+end-to-end; a dry (no-API) mode is enough to prove the scoring path — the live
+multi-model run is M-0002.
