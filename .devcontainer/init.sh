@@ -101,7 +101,7 @@ Verify the verifier can prove a trivial goal:
   echo 'lemma T() ensures 1+1==2 {}' > /tmp/t.dfy && dafny verify /tmp/t.dfy
 
 Run the loom-ultralight experiment (once its files are materialized):
-  cd docs/loom-ultralight && ./run.sh        # needs ANTHROPIC_API_KEY
+  cd experiments/loom-ultralight && ./run.sh   # needs ANTHROPIC_API_KEY
 
 ANTHROPIC_API_KEY is forwarded from the host environment. If it is
 empty inside the container, set it on the host before opening the
