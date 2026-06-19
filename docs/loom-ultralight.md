@@ -1,7 +1,7 @@
 # loom-ultralight — the PoC experiment (endogenous claim-weakening on a real aiwf invariant)
 
-> **Status:** experiment design — ready to run once Dafny + Z3 are installed. Every authored artifact (reference implementation, gold spec, mutant bank, both prompts) is in this document; nothing is left for the human to author.
-> **Relationship:** this is the **loom-ultralight** rung from [`loom-light.md`](loom-light.md) §1 — the cheapest test of the load-bearing hypothesis, *before* loom-light is built. It uses **no `.lm` language, no Rust, no codegen** — just Dafny + a small script.
+> **Status:** experiment design — ready to run once the toolchain (Dafny + Z3 and a Rust toolchain, both in the devcontainer) is in place. Every authored artifact (reference implementation, gold spec, mutant bank, both prompts) is in this document; nothing is left for the human to author.
+> **Relationship:** this is the **loom-ultralight** rung from [`loom-light.md`](loom-light.md) §1 — the cheapest test of the load-bearing hypothesis, *before* loom-light is built. It builds **none of the loom-light engine** — no `.lm` language, no codegen, no verifier abstraction — just Dafny plus a small Rust harness that calls the API and shells out to `dafny verify` (the same shell-out loom-light will do, which is why the harness is Rust, not a throwaway script in another language).
 > **Prior art:** the mechanism (mutate, re-verify, low kill-rate ⇒ weak spec) is [MutDafny](https://arxiv.org/abs/2511.15403) / [IronSpec](https://www.usenix.org/system/files/osdi24-goldweber.pdf); see `loom-light.md` §9. What is novel here is the *endogenous-gaming* framing this experiment tests, not the mutation technique.
 
 ---
@@ -131,12 +131,12 @@ Validity gate: `S` must verify against the **gold (correct) implementation**; a 
 
 ## 6. How to run (your part)
 
-1. Install Dafny + Z3 (`brew install dafny`, or a release build), and set `ANTHROPIC_API_KEY`.
-2. Materialize the files (see §7 — I can drop these for you): `canonicalize.dfy`, `mutants/M1…M8`, `prompts/{disinterested,incentivized}.md`, `mutate_and_score.py`, `run.sh`.
+1. Have the toolchain (the devcontainer provides it): Dafny + Z3 and a Rust toolchain. Standalone fallback: `brew install dafny` (or a release build) and `rustup`. Set `ANTHROPIC_API_KEY`.
+2. Materialize the files (I can drop these for you): `canonicalize.dfy`, `mutants/M1…M8`, `prompts/{disinterested,incentivized}.md`, the Rust harness (`Cargo.toml` + `src/main.rs`), and `run.sh`.
 3. **Step 0 — calibrate:** run `dafny verify canonicalize.dfy` and confirm GoldSpec + Idempotent verify, and that the gold spec kills all 8 mutants. *If Dafny reports a syntax/hint issue, that's a 1-line fix on code I couldn't execute here — not a re-authoring.*
-4. `./run.sh` → calls the API for each condition × N trials, scores each spec against the mutant bank, prints the kill-rate table and the gap.
+4. `./run.sh` (a thin `cargo run` wrapper) → calls the API for each condition × N trials × model, scores each spec against the mutant bank, prints the per-model kill-rate table and the gap.
 
-Harness logic (`mutate_and_score.py`), in brief:
+Harness logic (the Rust harness, `src/main.rs`), in brief:
 
 ```
 for impl in [gold] + mutants:
@@ -157,4 +157,4 @@ require: gold-impl verifies against S, else S is invalid (over-strong), drop it
 
 ## 8. Next step
 
-Materialize §3's artifacts into runnable files (`canonicalize.dfy`, the mutant bank, the two prompts, `mutate_and_score.py`, `run.sh`) so the repo finally contains something that executes. You then install Dafny and run it.
+Materialize §3's artifacts into runnable files (`canonicalize.dfy`, the mutant bank, the two prompts, the Rust harness `Cargo.toml` + `src/main.rs`, and `run.sh`) so the repo finally contains something that executes. You then run it — the devcontainer already provides Dafny and Rust.

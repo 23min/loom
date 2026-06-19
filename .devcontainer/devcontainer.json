@@ -55,7 +55,6 @@
       "extensions": [
         "golang.go",
         "rust-lang.rust-analyzer",
-        "ms-python.python",
         "dafny-lang.ide-vscode",
         "redhat.vscode-yaml",
         "anthropic.claude-code",

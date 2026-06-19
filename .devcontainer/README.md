@@ -1,10 +1,9 @@
 # loom devcontainer
 
 A reproducible environment for loom: the verification toolchain (Dafny +
-z3) the [loom-ultralight experiment](../docs/loom-ultralight.md) needs, the
-Python SDK its harness calls, Rust for loom-light implementation work, and
-[aiwf](https://github.com/23min/aiwf) for loom's own planning and
-provenance.
+z3) the [loom-ultralight experiment](../docs/loom-ultralight.md) needs, Rust for
+the experiment harness and loom-light implementation work, and
+[aiwf](https://github.com/23min/aiwf) for loom's own planning and provenance.
 
 ## What's in it
 
@@ -12,14 +11,14 @@ provenance.
 |---|---|---|
 | **Go 1.25** | base image (`mcr.microsoft.com/devcontainers/go`) | builds/installs aiwf |
 | **Dafny + z3** | `dotnet tool install Dafny` (pinned, bundles z3) | the verifier for the experiment |
-| **Python 3 + `anthropic`** | dotnet/python features + `pip install` in `init.sh` | the experiment harness |
-| **Rust** | `rust` devcontainer feature | loom-light implementation language |
+| **Rust** | `rust` devcontainer feature; deps via `Cargo.lock` | the experiment harness **and** loom-light implementation |
 | **aiwf** | `go install …@v0.15.1` (pinned release) | planning + provenance for this repo |
 | **Claude Code CLI** | `claude.ai/install.sh` | agent workflows |
 | **Node 22, gh, zsh** | devcontainer features | tooling + GitHub access |
 
 Pinned versions live at the top of [`init.sh`](init.sh) (`AIWF_VERSION`,
-`DAFNY_VERSION`) — the only knobs to bump.
+`DAFNY_VERSION`) — the only knobs to bump. The harness's Rust dependencies are
+pinned separately by `experiments/loom-ultralight/Cargo.lock`.
 
 ## Design notes (how this differs from aiwf's devcontainer)
 
@@ -72,14 +71,20 @@ test -n "$ANTHROPIC_API_KEY" && echo "key present" || echo "key MISSING — set 
 - **`ANTHROPIC_API_KEY` empty inside the container:** it was not set in the
   host shell that launched the container. Set it on the host and rebuild (or
   `export` it inside the container for a one-off run).
-- **`pip install` blocked (externally-managed):** shouldn't happen on the
-  feature-built Python, but if it does, the harness can run in a venv —
-  `python3 -m venv .venv && . .venv/bin/activate && pip install anthropic`.
+- **Harness build:** the harness is Rust; `experiments/loom-ultralight/run.sh`
+  runs `cargo run`, and the first build fetches crates per `Cargo.lock`. If
+  `cargo` isn't found, the `rust` feature didn't install — rebuild the container.
 
 ## Reproducibility note
 
-Feature versions are pinned by major tag in `devcontainer.json`. For a fully
-byte-pinned environment, generate a lock file with the devcontainer CLL:
+The harness's Rust dependencies are byte-pinned by
+`experiments/loom-ultralight/Cargo.lock` — that is where the experiment's build
+reproducibility lives. The system tools (`aiwf`, Dafny) are pinned by the knobs
+in `init.sh`; the Rust toolchain comes from the `rust` devcontainer feature.
+
+Devcontainer *feature* versions are pinned only by major tag in
+`devcontainer.json`. For a fully byte-pinned image, generate a feature lock file
+with the devcontainer CLI:
 
 ```bash
 devcontainer features info --workspace-folder . > .devcontainer/devcontainer-lock.json

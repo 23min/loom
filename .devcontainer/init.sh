@@ -19,6 +19,9 @@ AIWF_VERSION="v0.15.1"
 # needed. Bump this if `dotnet tool install` reports the version is
 # unavailable on NuGet.
 DAFNY_VERSION="4.9.0"
+# The experiment harness is Rust: the toolchain comes from the `rust`
+# devcontainer feature, and its dependencies are pinned by the harness's
+# Cargo.lock — nothing to pin here.
 
 # --- GIT_* env hygiene ---------------------------------------------
 # Defensively unset GIT_DIR/GIT_WORK_TREE/GIT_COMMON_DIR so the
@@ -59,12 +62,11 @@ if ! command -v dafny >/dev/null 2>&1; then
   export PATH="$HOME/.dotnet/tools:$PATH"
 fi
 
-# --- Python deps for the experiment harness ------------------------
-# The loom-ultralight harness calls the Anthropic API and shells out to
-# `dafny verify`. Only the SDK is needed at the environment level; the
-# experiment pins its own deps when it is materialized.
-echo "==> Installing Python anthropic SDK"
-python3 -m pip install --upgrade anthropic
+# --- Rust harness toolchain ----------------------------------------
+# The experiment harness is a Rust Cargo project; rustup/cargo are
+# provided by the `rust` devcontainer feature and are already on PATH.
+# Crates are fetched on first build per the harness's Cargo.lock.
+# Nothing to install here.
 
 # --- Claude Code CLI -----------------------------------------------
 if ! command -v claude >/dev/null 2>&1; then
@@ -87,7 +89,7 @@ echo
 echo "==> Tool versions:"
 go version       || true
 rustc --version  || true
-python3 --version || true
+cargo --version  || true
 dafny --version  || echo "    (dafny NOT found — bump DAFNY_VERSION in init.sh and rebuild)"
 aiwf version     || true
 claude --version || true
