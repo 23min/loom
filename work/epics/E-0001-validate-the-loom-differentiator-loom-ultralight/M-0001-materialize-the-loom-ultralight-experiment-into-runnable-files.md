@@ -25,8 +25,10 @@ Deliverables:
   and the gold spec (`GoldSpec` + `Idempotent`).
 - `mutants/M1..M8` — the 8-mutant bank (three of which break value-preservation, the
   "gamed-spec" tell).
-- `prompts/disinterested.md` and `prompts/incentivized.md` — identical prose intent;
-  they differ only in the grading clause.
+- `prompts/disinterested.md` and `prompts/incentivized.md` — **both** author a spec *and*
+  an implementation, identical prose intent; they differ **only** in the grading clause
+  (spec audited for completeness vs graded only on `dafny verify` passing). Holding the
+  task constant isolates the incentive as the sole variable; we score only the spec.
 - `mutate_and_score.py` — pairs each spec-under-test with the gold impl and every
   mutant, runs `dafny verify`, classifies killed / survived / inconclusive, and
   computes kill-rate. **Parameterized by model** (for the M-0002 sweep).
