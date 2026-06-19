@@ -2,7 +2,7 @@
 
 > **Status:** draft
 > **Audience:** anyone who wants to know how far Loom's guarantees reach *across* modules, not just within one — and where they currently stop.
-> **Companions:** [`bidirectional-refinement.md`](bidirectional-refinement.md) (the gap report), [`containment-not-solution.md`](containment-not-solution.md) (the reliability frame), [`language-reference.md`](language-reference.md) §4.6/§7 and [`claims-reference.md`](claims-reference.md) §7 (the `summarizes` register), [`verification-internals.md`](verification-internals.md) §6 (limitations).
+> **Companions:** [`bidirectional-refinement.md`](bidirectional-refinement.md) (the gap report), [`containment-not-solution.md`](../research/containment-not-solution.md) (the reliability frame), [`language-reference.md`](language-reference.md) §4.6/§7 and [`claims-reference.md`](claims-reference.md) §7 (the `summarizes` register), [`verification-internals.md`](verification-internals.md) §6 (limitations).
 > **Worked example:** [`examples/05-composition/`](../examples/05-composition/).
 
 ---
@@ -11,7 +11,7 @@
 
 A recurring worry about LLM coding agents is that they *quietly break architecture*: each local edit looks plausible, the tests stay green, but a global property of the system silently degrades until it fails in production. Tests do not catch this because tests are local and example-based; nothing in the ordinary workflow forces the system's *cross-cutting* invariants to be re-established after every change.
 
-This is the same problem Loom's premise names — "you still read the output and hope" ([`README.md`](../README.md)) — but raised one level. Loom's per-module verification is a strong answer to *within-module* correctness. The question this document answers is: **how well does Loom preserve correctness at the level of the whole system — the "global" aspect, the architecture?**
+This is the same problem Loom's premise names — "you still read the output and hope" ([`README.md`](../../README.md)) — but raised one level. Loom's per-module verification is a strong answer to *within-module* correctness. The question this document answers is: **how well does Loom preserve correctness at the level of the whole system — the "global" aspect, the architecture?**
 
 The honest answer is that "architecture" splits into three distinct concerns, and Loom scores very differently on each:
 
@@ -74,7 +74,7 @@ Bidirectional refinement already defines the discipline within a boundary: *obli
 
 > A cross-umbrella discharge is no stronger than the weakest child claim it depends on. A category-(B) child claim **propagates upward**: the parent claim that requires it degrades to category-(B), with the child's gap as its reason.
 
-This is the load-bearing rule, and it is where [`containment-not-solution.md`](containment-not-solution.md) becomes directly relevant. §3 of that essay insists a trust root must be *external* — "the worker cannot game the checker." The upward summary is produced, in the LLM workflow, by the `loom summarize` operation, which is **worker-mediated**. So the discipline must be explicit:
+This is the load-bearing rule, and it is where [`containment-not-solution.md`](../research/containment-not-solution.md) becomes directly relevant. §3 of that essay insists a trust root must be *external* — "the worker cannot game the checker." The upward summary is produced, in the LLM workflow, by the `loom summarize` operation, which is **worker-mediated**. So the discipline must be explicit:
 
 - `summarize` may *draft* the parent's `summarizes` register (propose the `requires`/`means`).
 - The **verifier**, not the summary, must discharge `means` from the assumed child claims.
@@ -304,7 +304,7 @@ Within a module, category-(A)-shrink tracking (§2.1) is a real erosion signal. 
 
 ## 7. The reframe: containment, not solution
 
-It would be a mistake to read §6 as "Loom fails at global correctness." [`containment-not-solution.md`](containment-not-solution.md) argues the goal is not to *solve* (prevent every architectural break) but to *contain* — to make residual risk **locatable**: concentrated in small named artifacts, explicitly reviewed, rather than diffuse and silent.
+It would be a mistake to read §6 as "Loom fails at global correctness." [`containment-not-solution.md`](../research/containment-not-solution.md) argues the goal is not to *solve* (prevent every architectural break) but to *contain* — to make residual risk **locatable**: concentrated in small named artifacts, explicitly reviewed, rather than diffuse and silent.
 
 By that standard the design is sound even where mechanization is incomplete. `audit_is_complete` is not proved, but it is not *invisible* either: it has a name, a home at the top of the tree, an explicit `gap` marker, and a stated reason. A reviewer is forced to confront "we do not yet guarantee ledger/audit non-drift across traces" — which is exactly the question that, in an ordinary codebase, no one is forced to ask until an incident.
 
@@ -326,9 +326,9 @@ In rough priority order, relative to the concern:
 ## 9. References
 
 - [`bidirectional-refinement.md`](bidirectional-refinement.md) — the gap report; §9 lists cross-umbrella composition as future work.
-- [`containment-not-solution.md`](containment-not-solution.md) — trust roots, independence, locatability.
+- [`containment-not-solution.md`](../research/containment-not-solution.md) — trust roots, independence, locatability.
 - [`language-reference.md`](language-reference.md) §4.6, §7 — the `summarizes` register and module composition.
 - [`claims-reference.md`](claims-reference.md) §7 — the meaning of `summarizes`.
 - [`verification-internals.md`](verification-internals.md) §2.3 (lemma encoding), §4.2 (source map), §6.3 (no mutable state).
-- [`docs/research/verifiable-umbrella-paper-v2.md`](research/verifiable-umbrella-paper-v2.md) §4.5 — the umbrella tree and verifiability gradient.
+- [`docs/research/verifiable-umbrella-paper-v2.md`](../research/verifiable-umbrella-paper-v2.md) §4.5 — the umbrella tree and verifiability gradient.
 - [`examples/05-composition/`](../examples/05-composition/) — the worked example.

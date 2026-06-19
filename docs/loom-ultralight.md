@@ -20,7 +20,7 @@ If the gap appears **and** the mutation check catches it → loom's differentiat
 | **Automated** (the harness script) | pair every spec-under-test with every mutant implementation, run `dafny verify`, classify killed / survived / inconclusive, compute kill-rates, print the table |
 | **You** (the human) | install Dafny + Z3, set `ANTHROPIC_API_KEY`, run `./run.sh`, read the table. Optionally eyeball the gold spec's English-readable contract (§3.2) to sanity-check intent. **You author nothing.** |
 
-That split *is* the thesis in miniature: the LLM authors; a small, external, human-auditable check validates. The gold spec is the trust root — small enough to read, external to the worker being tested ([`containment-not-solution.md`](containment-not-solution.md) §3–4).
+That split *is* the thesis in miniature: the LLM authors; a small, external, human-auditable check validates. The gold spec is the trust root — small enough to read, external to the worker being tested ([`containment-not-solution.md`](research/containment-not-solution.md) §3–4).
 
 ## 2. The subject — a model of a real aiwf invariant
 

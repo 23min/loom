@@ -2,7 +2,7 @@
 
 > **Status:** draft
 > **Audience:** contributors and users who want to understand what the gap report is and why it is load-bearing
-> **Companion:** [`docs/research/verifiable-umbrella-paper-v2.md`](research/verifiable-umbrella-paper-v2.md) §4.4 (the original formulation)
+> **Companion:** [`docs/research/verifiable-umbrella-paper-v2.md`](../research/verifiable-umbrella-paper-v2.md) §4.4 (the original formulation)
 
 ---
 
@@ -129,7 +129,7 @@ Bidirectional refinement is not:
 
 ## 7. The relationship to the cheating attractor
 
-The companion essay [`docs/research/process-gates-and-value-gates.md`](research/process-gates-and-value-gates.md) makes the structural point that LLM-mediated mechanical checks are vulnerable to gaming wherever the LLM authors the gate's definitional content. The umbrella's claims are exactly such content.
+The companion essay [`docs/research/process-gates-and-value-gates.md`](../research/process-gates-and-value-gates.md) makes the structural point that LLM-mediated mechanical checks are vulnerable to gaming wherever the LLM authors the gate's definitional content. The umbrella's claims are exactly such content.
 
 The bidirectional gap report does not solve the cheating attractor. It does two specific things:
 

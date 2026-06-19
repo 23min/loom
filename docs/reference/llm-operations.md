@@ -9,7 +9,7 @@ This document describes the three LLM-mediated operations Loom provides, their d
 
 ## 1. Why these three operations
 
-The architecture paper [`docs/research/verifiable-umbrella-paper-v2.md`](research/verifiable-umbrella-paper-v2.md) §4.10 identifies the LLM's role in the three-layer model as transformation between layers:
+The architecture paper [`docs/research/verifiable-umbrella-paper-v2.md`](../research/verifiable-umbrella-paper-v2.md) §4.10 identifies the LLM's role in the three-layer model as transformation between layers:
 
 - **`distill`** transforms prose → umbrella (downward: human's loose description becomes a structured umbrella).
 - **`generate`** transforms umbrella → sibling implementation (downward: claims become code that satisfies them).
@@ -322,8 +322,8 @@ The companion paper's threat model — claim weakening, gap-as-escape, example n
 
 ## 11. References
 
-- [`docs/research/verifiable-umbrella-paper-v2.md`](research/verifiable-umbrella-paper-v2.md) §4.10, §6 — original architecture.
-- [`docs/research/spec-quality-under-llm-authorship.md`](research/spec-quality-under-llm-authorship.md) — threat model for LLM-authored specifications.
+- [`docs/research/verifiable-umbrella-paper-v2.md`](../research/verifiable-umbrella-paper-v2.md) §4.10, §6 — original architecture.
+- [`docs/research/spec-quality-under-llm-authorship.md`](../research/spec-quality-under-llm-authorship.md) — threat model for LLM-authored specifications.
 - [`docs/spec-quality.md`](spec-quality.md) — `specq`, the layered defense.
 - [`docs/language-reference.md`](language-reference.md) — the language the LLM is generating.
 - Anthropic API docs: https://docs.claude.com/

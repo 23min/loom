@@ -56,7 +56,7 @@ The following are not open for negotiation in v0. Changing them changes what Loo
 
 ### 2.1 The umbrella as the verified intermediate artifact
 
-The umbrella is the focal artifact. Everything in v0 serves the umbrella's role: it is what the human reads, what the LLM writes, what the verifier checks, what the codegen targets. The umbrella has five registers — `knows`, `relates`, `shows`, `does`, `proves` — described in [`docs/claims-reference.md`](docs/claims-reference.md). The registers are not negotiable in v0; cross-register coverage is part of the architecture's discipline.
+The umbrella is the focal artifact. Everything in v0 serves the umbrella's role: it is what the human reads, what the LLM writes, what the verifier checks, what the codegen targets. The umbrella has five registers — `knows`, `relates`, `shows`, `does`, `proves` — described in [`docs/reference/claims-reference.md`](docs/reference/claims-reference.md). The registers are not negotiable in v0; cross-register coverage is part of the architecture's discipline.
 
 ### 2.2 Three layers
 
@@ -64,7 +64,7 @@ Prose, umbrella, implementation. The umbrella is between prose and implementatio
 
 ### 2.3 Bidirectional refinement
 
-The verifier produces a *gap report*: a comparison of what the umbrella claims to what the verifier has proved. The gap report is part of the output, not an internal artifact. Implementations that pass verification but leave the umbrella's claims partially unproved have *gaps*, and gaps are first-class. [`docs/bidirectional-refinement.md`](docs/bidirectional-refinement.md) is the canonical reference.
+The verifier produces a *gap report*: a comparison of what the umbrella claims to what the verifier has proved. The gap report is part of the output, not an internal artifact. Implementations that pass verification but leave the umbrella's claims partially unproved have *gaps*, and gaps are first-class. [`docs/reference/bidirectional-refinement.md`](docs/reference/bidirectional-refinement.md) is the canonical reference.
 
 ### 2.4 The cheating attractor at the claim-authorship layer
 
@@ -125,7 +125,7 @@ Each subsection is a candidate epic.
 **Decision needed:** ADR-0005 — parser approach (chumsky vs tree-sitter-canonical vs lalrpop vs pest vs hand-rolled).
 
 **Scope notes:**
-- The full grammar is sketched in [`docs/language-reference.md`](docs/language-reference.md). The grammar may change as v0 evolves; the parser should be structured to accommodate changes without ground-up rewrites.
+- The full grammar is sketched in [`docs/reference/language-reference.md`](docs/reference/language-reference.md). The grammar may change as v0 evolves; the parser should be structured to accommodate changes without ground-up rewrites.
 - Source positions must be preserved through parsing for diagnostic quality.
 
 ### 4.2 Static checker and cross-register coverage (`crates/loom-check`)
@@ -152,7 +152,7 @@ Anti-pattern detection (predicates that only mention inputs; refinement predicat
 **Decision needed:** ADR-0006 — set of lint rules in v0 and their default severities.
 
 **Scope notes:**
-- Specific anti-patterns to implement are listed in [`docs/spec-quality.md`](docs/spec-quality.md).
+- Specific anti-patterns to implement are listed in [`docs/reference/spec-quality.md`](docs/reference/spec-quality.md).
 - Suppression mechanism (`#[allow(unused_type)]`-style annotations on declarations) is part of v0.
 
 ### 4.3 Verification backend (`crates/loom-compile-dafny` initially)
@@ -201,7 +201,7 @@ Anti-pattern detection (predicates that only mention inputs; refinement predicat
 **Decision needed:** ADR-0002 (already drafted) — verifier choice. The drafted ADR recommends Dafny; the recommendation is appealable.
 
 **Scope notes:**
-- The Loom AST→Dafny translation is the core of [`docs/verification-internals.md`](docs/verification-internals.md).
+- The Loom AST→Dafny translation is the core of [`docs/reference/verification-internals.md`](docs/reference/verification-internals.md).
 - The verifier interface should be abstracted behind a trait (`trait Verifier`) so that swapping backends is a code change, not an architectural change.
 - The translation is total (every well-formed umbrella translates) but the resulting Dafny may be unverifiable (the verifier may time out or fail to prove correct claims). These are different conditions.
 
@@ -246,7 +246,7 @@ Anti-pattern detection (predicates that only mention inputs; refinement predicat
 **Decision needed:** ADR-0003 (already drafted) — target language choice.
 
 **Scope notes:**
-- Codegen mappings (Loom types to Python types; `does` blocks to Python functions; `shows` examples to pytest tests) are documented in [`docs/verification-internals.md`](docs/verification-internals.md) §3 (target codegen, distinct from verification codegen in §2).
+- Codegen mappings (Loom types to Python types; `does` blocks to Python functions; `shows` examples to pytest tests) are documented in [`docs/reference/verification-internals.md`](docs/reference/verification-internals.md) §3 (target codegen, distinct from verification codegen in §2).
 - The generated code is intended to be human-readable. Diff-friendliness matters because git is the substrate.
 
 ### 4.5 Verifier orchestration and gap reporter (`crates/loom-verify`)
@@ -270,7 +270,7 @@ Anti-pattern detection (predicates that only mention inputs; refinement predicat
 **Decision needed:** ADR-0007 — gap report schema and stability commitments.
 
 **Scope notes:**
-- Gap report design is the topic of [`docs/bidirectional-refinement.md`](docs/bidirectional-refinement.md) §3.
+- Gap report design is the topic of [`docs/reference/bidirectional-refinement.md`](docs/reference/bidirectional-refinement.md) §3.
 - The gap report distinguishes (a) properties claimed but not proved (timeout, verifier limitation, genuine gap), (b) properties claimed and proved (the verified claims), (c) properties not claimed but implied by the implementation's verified behavior (the *bidirectional* part — what the implementation establishes that the umbrella does not credit).
 - Category (c) requires running mutation testing on claims; details in §4.7.
 
@@ -302,7 +302,7 @@ Anti-pattern detection (predicates that only mention inputs; refinement predicat
 **Decision needed:** ADR-0008 — LLM provider abstraction and v0 default.
 
 **Scope notes:**
-- The full prompt design is in [`docs/llm-operations.md`](docs/llm-operations.md).
+- The full prompt design is in [`docs/reference/llm-operations.md`](docs/reference/llm-operations.md).
 - Each operation should produce a *diff* against the existing artifact, not a wholesale rewrite. The diff is human-reviewable before being applied.
 - Prompts include the relevant parts of the umbrella's schema (the five registers) as structured context, not just as natural language.
 
@@ -329,7 +329,7 @@ Anti-pattern detection (predicates that only mention inputs; refinement predicat
 
 **Scope notes:**
 - v0 implements the §5 defenses from the companion paper (grammar bans, cross-register coverage, domain engagement, gap discipline, anti-patterns) and §6 mutation testing on claims, with a starter set of operators.
-- The full mutation-operator catalog is documented in [`docs/spec-quality.md`](docs/spec-quality.md) §4.
+- The full mutation-operator catalog is documented in [`docs/reference/spec-quality.md`](docs/reference/spec-quality.md) §4.
 - The mutation engine assumes the verifier is fast enough for repeated invocations. If verification is slow, caching is essential.
 
 ### 4.8 CLI binary (`crates/loom-cli`)
@@ -436,8 +436,8 @@ Anti-pattern detection (predicates that only mention inputs; refinement predicat
 
 **Default choice.** Markdown documentation, organized by audience:
 
-- **Users** (people writing umbrellas): `docs/language-reference.md`, `docs/claims-reference.md`, `docs/llm-operations.md`, `docs/spec-quality.md`.
-- **Contributors** (people working on Loom itself): `docs/verification-internals.md`, `docs/bidirectional-refinement.md`, the ADRs in `docs/adr/`.
+- **Users** (people writing umbrellas): `docs/reference/language-reference.md`, `docs/reference/claims-reference.md`, `docs/reference/llm-operations.md`, `docs/reference/spec-quality.md`.
+- **Contributors** (people working on Loom itself): `docs/reference/verification-internals.md`, `docs/reference/bidirectional-refinement.md`, the ADRs in `docs/adr/`.
 - **Researchers** (people evaluating the project's claims): `docs/research/` (background documents).
 
 **For Markdown:**
@@ -653,12 +653,12 @@ Additional ADRs may emerge as components are built. The above is the seed list.
 
 ### Project-internal references
 
-- [`docs/language-reference.md`](docs/language-reference.md) — the Loom surface language.
-- [`docs/claims-reference.md`](docs/claims-reference.md) — the five registers and their claim forms.
-- [`docs/verification-internals.md`](docs/verification-internals.md) — how Loom translates to Dafny.
-- [`docs/bidirectional-refinement.md`](docs/bidirectional-refinement.md) — the gap report and the discipline.
-- [`docs/llm-operations.md`](docs/llm-operations.md) — distill, generate, summarize.
-- [`docs/spec-quality.md`](docs/spec-quality.md) — using and extending `specq`.
+- [`docs/reference/language-reference.md`](docs/reference/language-reference.md) — the Loom surface language.
+- [`docs/reference/claims-reference.md`](docs/reference/claims-reference.md) — the five registers and their claim forms.
+- [`docs/reference/verification-internals.md`](docs/reference/verification-internals.md) — how Loom translates to Dafny.
+- [`docs/reference/bidirectional-refinement.md`](docs/reference/bidirectional-refinement.md) — the gap report and the discipline.
+- [`docs/reference/llm-operations.md`](docs/reference/llm-operations.md) — distill, generate, summarize.
+- [`docs/reference/spec-quality.md`](docs/reference/spec-quality.md) — using and extending `specq`.
 
 ### External
 

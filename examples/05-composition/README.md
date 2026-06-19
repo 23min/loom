@@ -4,7 +4,7 @@ This example demonstrates **cross-umbrella composition**: how a parent umbrella
 states *system-level* guarantees in terms of what its children prove, and where
 the discipline currently stops.
 
-It is the worked example for [`docs/compositional-correctness.md`](../../docs/compositional-correctness.md),
+It is the worked example for [`docs/compositional-correctness.md`](../../docs/reference/compositional-correctness.md),
 which explains the design in full. Read that doc for the analysis; this README
 is just the map.
 

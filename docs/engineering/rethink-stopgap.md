@@ -2,7 +2,7 @@
 
 > **Status:** draft (interim practice)
 > **Audience:** anyone building software with an LLM agent *before* Loom exists — including the authors of Loom itself.
-> **Companion:** [`docs/bidirectional-refinement.md`](bidirectional-refinement.md) (the gap report this practice imitates by hand), [`docs/research/process-gates-and-value-gates.md`](research/process-gates-and-value-gates.md) (why a *value* gate is the thing worth approximating).
+> **Companion:** [`docs/bidirectional-refinement.md`](../reference/bidirectional-refinement.md) (the gap report this practice imitates by hand), [`docs/research/process-gates-and-value-gates.md`](../research/process-gates-and-value-gates.md) (why a *value* gate is the thing worth approximating).
 
 ---
 

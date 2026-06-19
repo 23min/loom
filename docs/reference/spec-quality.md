@@ -2,7 +2,7 @@
 
 > **Status:** draft (v0 design)
 > **Audience:** users running `loom specq`; contributors maintaining the mutation engine, defenses, and reporting.
-> **Companion:** [`docs/research/spec-quality-under-llm-authorship.md`](research/spec-quality-under-llm-authorship.md) — the research paper that develops the threat model and the techniques. This document is the implementation-side view of the same content.
+> **Companion:** [`docs/research/spec-quality-under-llm-authorship.md`](../research/spec-quality-under-llm-authorship.md) — the research paper that develops the threat model and the techniques. This document is the implementation-side view of the same content.
 
 ---
 
@@ -425,7 +425,7 @@ If the LLM learns to optimize for mutation kill rate, it will produce specs that
 
 ## 12. References
 
-- [`docs/research/spec-quality-under-llm-authorship.md`](research/spec-quality-under-llm-authorship.md) — the full research treatment.
-- [`docs/research/process-gates-and-value-gates.md`](research/process-gates-and-value-gates.md) — the structural argument grounding the defenses.
+- [`docs/research/spec-quality-under-llm-authorship.md`](../research/spec-quality-under-llm-authorship.md) — the full research treatment.
+- [`docs/research/process-gates-and-value-gates.md`](../research/process-gates-and-value-gates.md) — the structural argument grounding the defenses.
 - [`docs/bidirectional-refinement.md`](bidirectional-refinement.md) — the related use of mutation testing for the gap report.
 - [`docs/claims-reference.md`](claims-reference.md) — the registers `specq` evaluates.

@@ -96,14 +96,26 @@ loom/
 │       └── README.md
 │
 ├── docs/
-│   ├── language-reference.md          # complete syntax reference
-│   ├── claims-reference.md            # all claim forms with examples
-│   ├── verification-internals.md      # how loom→Dafny works
-│   ├── bidirectional-refinement.md    # the bidirectional discipline
-│   ├── compositional-correctness.md   # cross-umbrella / global correctness, the gaps
-│   ├── llm-operations.md              # distill/generate/summarize
-│   ├── spec-quality.md                # using specq
-│   └── adr/                           # architecture decision records
+│   ├── README.md                      # docs index / map
+│   ├── loom-light.md                  # active: the thin verification-first stage
+│   ├── loom-ultralight.md             # active: the PoC experiment gating loom-light
+│   ├── reference/                     # grand-loom spec & internals
+│   │   ├── language-reference.md      # complete syntax reference
+│   │   ├── claims-reference.md        # all claim forms with examples
+│   │   ├── verification-internals.md  # how loom→Dafny works
+│   │   ├── bidirectional-refinement.md  # the bidirectional discipline
+│   │   ├── compositional-correctness.md # cross-umbrella / global correctness
+│   │   ├── spec-quality.md            # using specq
+│   │   └── llm-operations.md          # distill/generate/summarize
+│   ├── engineering/                   # how we build loom
+│   │   ├── principles.md              # code-health principles (the quality bar)
+│   │   └── rethink-stopgap.md         # interim value-gate practice
+│   ├── research/                      # foundational papers + essays
+│   │   ├── verifiable-umbrella-paper-v2.md
+│   │   ├── process-gates-and-value-gates.md
+│   │   ├── spec-quality-under-llm-authorship.md
+│   │   └── containment-not-solution.md
+│   └── adr/                           # architecture decision records (aiwf-managed)
 │       ├── ADR-0001-rust-as-impl-language.md
 │       ├── ADR-0002-dafny-as-verifier.md
 │       ├── ADR-0003-python-as-target.md
