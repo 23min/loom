@@ -1,0 +1,71 @@
+@loom-version 0.1
+@target python
+
+// Child umbrella A — the money-moving core.
+// Proves the two properties the parent (bank.lm) leans on:
+//   conservation   — a transfer preserves total money
+//   no_overdrafts  — a transfer never drives a balance negative
+module ledger {
+  knows {
+    Money :: {x: int | x >= 0}
+    AccountId :: {s: string | s.length > 0 and s.length <= 64}
+    PositiveAmount :: {x: int | x > 0}
+    Account :: {id: AccountId, balance: Money, open: bool}
+  }
+
+  relates {
+    transfer(from: Account, to: Account, amount: PositiveAmount) -> (Account, Account)
+      requires { from.open, to.open, from.balance >= amount }
+      ensures {
+        let (from', to') = result;
+        from'.balance = from.balance - amount,
+        to'.balance = to.balance + amount,
+        from'.id = from.id, to'.id = to.id,
+        from'.open = from.open, to'.open = to.open,
+      }
+  }
+
+  shows {
+    transfer_succeeds:
+      transfer(
+        {id: "alice", balance: 100, open: true},
+        {id: "bob", balance: 0, open: true},
+        30
+      )
+      -> ({id: "alice", balance: 70, open: true},
+          {id: "bob", balance: 30, open: true})
+
+    transfer_exact_balance:
+      transfer(
+        {id: "alice", balance: 50, open: true},
+        {id: "bob", balance: 0, open: true},
+        50
+      )
+      -> ({id: "alice", balance: 0, open: true},
+          {id: "bob", balance: 50, open: true})
+  }
+
+  does {
+    transfer(from: Account, to: Account, amount: PositiveAmount) -> (Account, Account) {
+      let from' = from with {balance: from.balance - amount};
+      let to' = to with {balance: to.balance + amount};
+      (from', to')
+    }
+  }
+
+  proves {
+    // total money across the two accounts is unchanged by a transfer
+    conservation:
+      for-all from: Account, to: Account, amount: PositiveAmount,
+        from.open and to.open and from.balance >= amount =>
+          let (from', to') = transfer(from, to, amount);
+          from.balance + to.balance = from'.balance + to'.balance
+
+    // the debited account never goes negative
+    no_overdrafts:
+      for-all from: Account, to: Account, amount: PositiveAmount,
+        from.open and to.open and from.balance >= amount =>
+          let (from', _) = transfer(from, to, amount);
+          from'.balance >= 0
+  }
+}

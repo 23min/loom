@@ -35,4 +35,5 @@ Seed stage. Code does not yet exist. The repository currently holds:
 - New here? Read [`docs/research/verifiable-umbrella-paper-v2.md`](docs/research/verifiable-umbrella-paper-v2.md) for the architecture, then [`PLAN.md`](PLAN.md) for what v0 commits to building.
 - Looking for the language? [`docs/language-reference.md`](docs/language-reference.md) and [`docs/claims-reference.md`](docs/claims-reference.md).
 - Looking for the discipline? [`docs/bidirectional-refinement.md`](docs/bidirectional-refinement.md).
+- Wondering how far guarantees reach *across* modules — the "global"/architecture question? [`docs/compositional-correctness.md`](docs/compositional-correctness.md), with the worked two-umbrella [`examples/05-composition/`](examples/05-composition/).
 - Worried about LLMs gaming the specs? [`docs/spec-quality.md`](docs/spec-quality.md) and [`docs/research/spec-quality-under-llm-authorship.md`](docs/research/spec-quality-under-llm-authorship.md).

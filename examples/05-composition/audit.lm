@@ -1,0 +1,58 @@
+@loom-version 0.1
+@target python
+
+// Child umbrella B — an append-only audit log.
+// Proves the three properties the parent (bank.lm) leans on:
+//   append_only           — recording preserves every prior entry
+//   records_the_entry     — the recorded entry is present afterwards
+//   length_grows_by_one   — recording adds exactly one entry
+//
+// NOTE (provisional surface syntax): list literals (`[...]`) and the
+// `Log.insert` append operation are not yet finalized in the v0 prelude.
+// They are used here for readability; the proofs below depend only on
+// `.length` and `.contains`, which are stable.
+module audit {
+  knows {
+    AccountId :: {s: string | s.length > 0 and s.length <= 64}
+    PositiveAmount :: {x: int | x > 0}
+    Entry :: {from: AccountId, to: AccountId, amount: PositiveAmount}
+    Log :: List<Entry>
+  }
+
+  relates {
+    record(log: Log, e: Entry) -> Log
+      ensures {
+        result.length = log.length + 1,
+        result.contains(e),
+      }
+  }
+
+  shows {
+    record_appends:
+      record([], {from: "alice", to: "bob", amount: 30})
+      -> [{from: "alice", to: "bob", amount: 30}]
+  }
+
+  does {
+    record(log: Log, e: Entry) -> Log {
+      log.insert(e)   // append e at the end, returning a new Log
+    }
+  }
+
+  proves {
+    // every entry already in the log survives a record (nothing is dropped)
+    append_only:
+      for-all log: Log, e: Entry, x: Entry,
+        log.contains(x) => record(log, e).contains(x)
+
+    // the new entry is present after recording
+    records_the_entry:
+      for-all log: Log, e: Entry,
+        record(log, e).contains(e)
+
+    // recording adds exactly one entry
+    length_grows_by_one:
+      for-all log: Log, e: Entry,
+        record(log, e).length = log.length + 1
+  }
+}

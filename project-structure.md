@@ -87,14 +87,20 @@ loom/
 │   ├── 03-todo-list/                  # a more practical case
 │   │   ├── todos.lm
 │   │   └── README.md
-│   └── 04-bidirectional-demo/         # shows the gap report doing work
-│       └── ...
+│   ├── 04-bidirectional-demo/         # shows the gap report doing work
+│   │   └── ...
+│   └── 05-composition/                # two umbrellas; parent invariant from child claims
+│       ├── ledger.lm
+│       ├── audit.lm
+│       ├── bank.lm
+│       └── README.md
 │
 ├── docs/
 │   ├── language-reference.md          # complete syntax reference
 │   ├── claims-reference.md            # all claim forms with examples
 │   ├── verification-internals.md      # how loom→Dafny works
 │   ├── bidirectional-refinement.md    # the bidirectional discipline
+│   ├── compositional-correctness.md   # cross-umbrella / global correctness, the gaps
 │   ├── llm-operations.md              # distill/generate/summarize
 │   ├── spec-quality.md                # using specq
 │   └── adr/                           # architecture decision records

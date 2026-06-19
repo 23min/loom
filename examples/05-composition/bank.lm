@@ -1,0 +1,98 @@
+@loom-version 0.1
+@target python
+
+// Parent umbrella — composes ledger (money) and audit (log) into one system
+// operation, execute_transfer, and states the system-level guarantees.
+//
+// The `summarizes` register (post-v0; see docs/compositional-correctness.md)
+// is where the *global* claims live: claims the parent guarantees in terms of
+// what the children prove. This file is the canonical two-umbrella example.
+
+import ledger from "./ledger.lm"
+import audit from "./audit.lm"
+
+module bank {
+  knows {
+    // The whole system state for this minimal example: the two accounts the
+    // transfer moves money between, plus the audit log.
+    System :: {
+      from: ledger.Account,
+      to: ledger.Account,
+      log: audit.Log,
+    }
+  }
+
+  relates {
+    // One system operation = one ledger transfer + one audit record.
+    execute_transfer(s: System, amount: ledger.PositiveAmount) -> System
+      requires { s.from.open, s.to.open, s.from.balance >= amount }
+      ensures {
+        let (from', to') = ledger.transfer(s.from, s.to, amount);
+        result.from = from',
+        result.to = to',
+        result.log = audit.record(s.log, {from: s.from.id, to: s.to.id, amount: amount}),
+      }
+  }
+
+  shows {
+    execute_transfer_records_and_moves:
+      execute_transfer(
+        {from: {id: "alice", balance: 100, open: true},
+         to:   {id: "bob",   balance: 0,   open: true},
+         log:  []},
+        30
+      )
+      -> {from: {id: "alice", balance: 70, open: true},
+          to:   {id: "bob",   balance: 30, open: true},
+          log:  [{from: "alice", to: "bob", amount: 30}]}
+  }
+
+  does {
+    execute_transfer(s: System, amount: ledger.PositiveAmount) -> System {
+      let (from', to') = ledger.transfer(s.from, s.to, amount);
+      let entry = {from: s.from.id, to: s.to.id, amount: amount};
+      let log' = audit.record(s.log, entry);
+      {from: from', to: to', log: log'}
+    }
+  }
+
+  proves {
+    // A purely local property of the composed operation — verified the normal
+    // way, against this umbrella's own `does`. It does NOT need the children's
+    // claims because execute_transfer's body is in scope here.
+    system_conserves_money:
+      for-all s: System, amount: ledger.PositiveAmount,
+        s.from.open and s.to.open and s.from.balance >= amount =>
+          let s' = execute_transfer(s, amount);
+          s.from.balance + s.to.balance = s'.from.balance + s'.to.balance
+  }
+
+  summarizes {
+    // (A) Discharges from the child claims, treating them as assumed.
+    // Sound only because ledger.conservation, audit.records_the_entry and
+    // audit.length_grows_by_one are all category-(A) in their own umbrellas.
+    funds_conserved_and_audited:
+      requires {
+        ledger.conservation,
+        audit.records_the_entry,
+        audit.length_grows_by_one,
+      }
+      means {
+        for-all s: System, amount: ledger.PositiveAmount when
+          s.from.open and s.to.open and s.from.balance >= amount,
+          let s' = execute_transfer(s, amount);
+          (s.from.balance + s.to.balance = s'.from.balance + s'.to.balance)
+          and (s'.log.length = s.log.length + 1)
+          and s'.log.contains({from: s.from.id, to: s.to.id, amount: amount})
+      }
+
+    // (B) The architecturally load-bearing invariant — and a known gap.
+    // Intent (prose; not yet a checkable claim): every transfer ever executed
+    // on the system has a matching audit entry — i.e. the ledger and the audit
+    // log can never silently drift apart. This is a property of the *trace* of
+    // operations, which Loom v0 cannot model (no mutable state / history; see
+    // docs/verification-internals.md §6.3). It is admitted as an explicit gap,
+    // restricted to a single operation, and surfaces as category-(B).
+    gap audit_is_complete: when single_operation
+  }
+}
