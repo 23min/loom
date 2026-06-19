@@ -1,11 +1,16 @@
-# ADR-0017: loom-light generates no target code; the form of `does` is deferred
+---
+id: ADR-0017
+title: loom-light generates no target code; the form of does is deferred
+status: proposed
+---
 
-**Status:** Proposed (the no-codegen decision) · Open (the `does`-form question — deferred to loom-light implementation evidence).
-**Date:** 2026-06-19
-**Deciders:** project initial author; open for review.
-**Relationship to ADR-0003:** defers ADR-0003 (Python as target) *out of loom-light scope*; does **not** supersede it.
-**Stage:** this is a **loom-light** decision (see [`docs/loom-light.md`](../loom-light.md)), not a decision about the grand-loom destination in `PLAN.md`. Note: "loom-light" is a named stage, deliberately not "v0".
-**Related:** `PLAN.md` (the grand-loom destination) §1.2, §2.1, §4.4, §5.3, §6; ADR-0002 (Dafny verifier); ADR-0018 (spec↔implementation binding); `docs/loom-light.md`.
+# ADR-0017 — loom-light generates no target code; the form of `does` is deferred
+
+> **Date:** 2026-06-19 · **Deciders:** project initial author; open for review.
+> **Status note:** aiwf status `proposed` covers the no-codegen decision; the `does`-form question remains **open**, deferred to loom-light implementation evidence.
+> **Relationship to ADR-0003:** defers ADR-0003 (Python as target) *out of loom-light scope*; does **not** supersede it.
+> **Stage:** a **loom-light** decision (see [`docs/loom-light.md`](../loom-light.md)), not a decision about the grand-loom destination in `PLAN.md`. "loom-light" is a named stage, deliberately not "v0".
+> **Related:** `PLAN.md` (the grand-loom destination) §1.2, §2.1, §4.4, §5.3, §6; ADR-0002 (Dafny verifier); ADR-0018 (spec↔implementation binding); `docs/loom-light.md`.
 
 ---
 

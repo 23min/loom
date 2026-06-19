@@ -1,10 +1,15 @@
-# ADR-0018: Spec↔implementation binding — option space (decision deferred)
+---
+id: ADR-0018
+title: Spec-implementation binding — option space (decision deferred)
+status: proposed
+---
 
-**Status:** Open — options recorded, decision deferred to loom-light implementation evidence.
-**Date:** 2026-06-19
-**Deciders:** project initial author; open for review.
-**Stage:** a **loom-light** decision (see [`docs/loom-light.md`](../loom-light.md)), deferred.
-**Related:** ADR-0017 (loom-light: no codegen; `does`-form deferred — the same question from the other side), ADR-0002 (Dafny verifier), `PLAN.md` §1.1 (siblings), §2.3 (bidirectional refinement / gap report), §4.4; `docs/loom-light.md`.
+# ADR-0018 — Spec↔implementation binding — option space (decision deferred)
+
+> **Date:** 2026-06-19 · **Deciders:** project initial author; open for review.
+> **Status note:** options recorded; the decision is **open**, deferred to loom-light implementation evidence. aiwf ADR status `proposed` is the closest fit for "open for decision".
+> **Stage:** a **loom-light** decision (see [`docs/loom-light.md`](../loom-light.md)), deferred.
+> **Related:** ADR-0017 (loom-light: no codegen; `does`-form deferred — the same question from the other side), ADR-0002 (Dafny verifier), `PLAN.md` §1.1 (siblings), §2.3 (bidirectional refinement / gap report), §4.4; `docs/loom-light.md`.
 
 ---
 

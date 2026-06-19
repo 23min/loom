@@ -104,10 +104,12 @@ loom/
 │   ├── llm-operations.md              # distill/generate/summarize
 │   ├── spec-quality.md                # using specq
 │   └── adr/                           # architecture decision records
-│       ├── 0001-rust-as-impl-language.md
-│       ├── 0002-dafny-as-verifier.md
-│       ├── 0003-python-as-target.md
-│       └── 0004-no-actors-in-v0.md
+│       ├── ADR-0001-rust-as-impl-language.md
+│       ├── ADR-0002-dafny-as-verifier.md
+│       ├── ADR-0003-python-as-target.md
+│       ├── ADR-0004-no-actors-in-v0.md
+│       ├── ADR-0017-loom-light-no-codegen-does-deferred.md
+│       └── ADR-0018-spec-implementation-binding-options.md
 │
 ├── .github/
 │   └── workflows/

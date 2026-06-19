@@ -1,9 +1,13 @@
-# ADR-0004: No actor runtime in v0
+---
+id: ADR-0004
+title: No actor runtime in v0
+status: proposed
+---
 
-**Status:** Proposed
-**Date:** 2026-05-22
-**Deciders:** project initial author; open for review.
-**Related:** `PLAN.md` §5.1; architecture paper §6 (the substrate the architecture envisions).
+# ADR-0004 — No actor runtime in v0
+
+> **Date:** 2026-05-22 · **Deciders:** project initial author; open for review.
+> **Related:** `PLAN.md` §5.1; architecture paper §6 (the substrate the architecture envisions).
 
 ---
 

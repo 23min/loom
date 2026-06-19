@@ -1,9 +1,13 @@
-# ADR-0002: Dafny as the v0 verification backend
+---
+id: ADR-0002
+title: Dafny as the v0 verification backend
+status: proposed
+---
 
-**Status:** Proposed
-**Date:** 2026-05-22
-**Deciders:** project initial author; open for review.
-**Related:** `PLAN.md` §2.6, §4.3; `docs/verification-internals.md`.
+# ADR-0002 — Dafny as the v0 verification backend
+
+> **Date:** 2026-05-22 · **Deciders:** project initial author; open for review.
+> **Related:** `PLAN.md` §2.6, §4.3; `docs/verification-internals.md`.
 
 ---
 
@@ -33,7 +37,7 @@ Adopt **Dafny** as the v0 verification backend.
 
 The Loom compiler translates umbrellas to `.dfy` files (per the encoding in `docs/verification-internals.md`) and invokes `dafny verify` as a subprocess. The backend is encapsulated in `crates/loom-compile-dafny` behind the `Verifier` trait.
 
-Dafny version is pinned (specific version per ADR-0014). Z3 version is pinned to whatever Dafny version ships with by default.
+Dafny version is pinned (specific version per a future `ADR-0014`). Z3 version is pinned to whatever Dafny version ships with by default.
 
 ---
 
@@ -136,7 +140,7 @@ This is meaningful but bounded work, on the order of weeks for a single experien
 
 - The Dafny encoding is documented in `docs/verification-internals.md`.
 - The `Verifier` trait is documented in `docs/verification-internals.md` §1.
-- Dafny version pinning is the subject of ADR-0014.
+- Dafny version pinning is the subject of a future `ADR-0014`.
 - Counterexample mapping is implemented in `crates/loom-verify/src/counterexample.rs`.
 
 ---

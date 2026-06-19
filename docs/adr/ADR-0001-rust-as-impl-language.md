@@ -1,9 +1,14 @@
-# ADR-0001: Rust as the implementation language for the Loom compiler
+---
+id: ADR-0001
+title: Rust as the implementation language for the Loom compiler
+status: proposed
+---
 
-**Status:** Proposed (drafted alongside `PLAN.md`; awaiting first-PR ratification)
-**Date:** 2026-05-22
-**Deciders:** project initial author; open for review.
-**Related:** `PLAN.md` §4 (workspace-wide), §4.1 (parser), §4.3 (verifier backend).
+# ADR-0001 — Rust as the implementation language for the Loom compiler
+
+> **Date:** 2026-05-22 · **Deciders:** project initial author; open for review.
+> **Related:** `PLAN.md` §4 (workspace-wide), §4.1 (parser), §4.3 (verifier backend).
+> **Status note:** drafted alongside `PLAN.md`; awaiting first-PR ratification.
 
 ---
 

@@ -1,9 +1,13 @@
-# ADR-0003: Python as the v0 target language for code generation
+---
+id: ADR-0003
+title: Python as the v0 target language for code generation
+status: proposed
+---
 
-**Status:** Proposed
-**Date:** 2026-05-22
-**Deciders:** project initial author; open for review.
-**Related:** `PLAN.md` §4.4, §5.3; `docs/verification-internals.md` §3.
+# ADR-0003 — Python as the v0 target language for code generation
+
+> **Date:** 2026-05-22 · **Deciders:** project initial author; open for review.
+> **Related:** `PLAN.md` §4.4, §5.3; `docs/verification-internals.md` §3.
 
 ---
 
