@@ -1,0 +1,2 @@
+# aiwf consumer-repo config. Append top-level keys (e.g. html: { commit_output: true })
+# to opt into framework features. See `aiwf doctor` and the README for the full list.
