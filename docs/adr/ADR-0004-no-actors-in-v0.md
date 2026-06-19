@@ -13,7 +13,7 @@ status: proposed
 
 ## Context
 
-The architecture paper [`docs/research/verifiable-umbrella-paper-v2.md`](research/verifiable-umbrella-paper-v2.md) §6 describes a runtime model in which Loom-verified components run as supervised actors. The actor model is part of the architecture's full vision: supervised concurrent processes, message-passing isolation, failure detection and restart, the kind of fault-tolerance Erlang/Elixir popularized.
+The architecture paper [`docs/research/verifiable-umbrella-paper-v2.md`](../research/verifiable-umbrella-paper-v2.md) §6 describes a runtime model in which Loom-verified components run as supervised actors. The actor model is part of the architecture's full vision: supervised concurrent processes, message-passing isolation, failure detection and restart, the kind of fault-tolerance Erlang/Elixir popularized.
 
 The v0 plan must decide whether to include any portion of this runtime model in the initial release.
 
@@ -72,7 +72,7 @@ The decision is documented prominently in `PLAN.md` §5.1 as out-of-scope conten
 
 **For.**
 
-- Smallest implementation effort. The codegen for plain functions is straightforward (per `docs/verification-internals.md` §3).
+- Smallest implementation effort. The codegen for plain functions is straightforward (per `docs/reference/verification-internals.md` §3).
 - Verifier model is straightforward: pure functions, sequential composition.
 - The v0 thesis (three-layer architecture, bidirectional refinement) is unaffected; the example corpus can demonstrate it without actors.
 - Operations that would be natural as actors (long-running stateful processes) are not in v0's example corpus.
@@ -135,8 +135,8 @@ Otherwise, the decision stands.
 
 ## Implementation notes
 
-- The codegen target (per ADR-0003 and `docs/verification-internals.md` §3) produces plain functions, no actor decorations, no message-passing scaffolding.
-- The Loom syntax (per `docs/language-reference.md`) does not include actor-related forms in v0. Reserved syntactic positions are noted in §10 of that document for potential future use.
+- The codegen target (per ADR-0003 and `docs/reference/verification-internals.md` §3) produces plain functions, no actor decorations, no message-passing scaffolding.
+- The Loom syntax (per `docs/reference/language-reference.md`) does not include actor-related forms in v0. Reserved syntactic positions are noted in §10 of that document for potential future use.
 - The architecture paper's §6 discussion of supervised actors and capability profiles is preserved in `docs/research/` as the source-of-truth for the post-v0 vision; the v0 plan does not contradict it, only defers it.
 
 ---
