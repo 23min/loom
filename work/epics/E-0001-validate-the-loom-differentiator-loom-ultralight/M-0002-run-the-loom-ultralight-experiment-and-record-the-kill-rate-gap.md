@@ -24,10 +24,12 @@ Run the experiment and record the result, per `docs/loom-ultralight.md` §4–§
 Configuration (decided in planning):
 - **Models:** a sweep across Opus 4.8, Sonnet 4.6, and Haiku 4.5.
 - **Trials:** N = 10 per condition, per model.
-- **Conditions:** disinterested (spec only) vs incentivized (graded only on
-  `dafny verify` passing the model's own implementation). We measure only the *spec*
-  each condition produces, scored against our reference impl + mutant bank; the
-  incentivized implementation is discarded — it exists only to create the incentive.
+- **Conditions:** **both** arms author a spec *and* an implementation; they differ
+  **only** in the grading clause — disinterested (spec audited for completeness) vs
+  incentivized (graded only on `dafny verify` passing). Holding the task constant
+  isolates the incentive as the sole variable (it removes the spec-only vs spec+impl
+  load confound). We score only the *spec* each arm produces, against our reference
+  impl + mutant bank; both implementations are discarded.
 
 Record a committed results artifact under `experiments/loom-ultralight/results/` — the
 per-model kill-rate table, the per-model gap, and the raw generations — so D-0001 is
