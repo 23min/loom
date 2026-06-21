@@ -1,0 +1,19 @@
+[package]
+name = "loom-ultralight"
+version = "0.1.0"
+edition = "2021"
+description = "loom-ultralight PoC: endogenous claim-weakening experiment harness"
+
+[[bin]]
+name = "loom-ultralight"
+path = "src/main.rs"
+
+[dependencies]
+# Blocking HTTP for the Anthropic Messages API. The `json` feature pulls in
+# serde_json and enables send_json/into_json; rustls TLS comes from the default
+# features, so no system OpenSSL is needed.
+ureq = { version = "2", features = ["json"] }
+serde_json = "1"
+# Wall-clock timeout around each `dafny verify` so a Z3 hang becomes an
+# "inconclusive" verdict instead of a hung harness.
+wait-timeout = "0.2"
