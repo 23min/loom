@@ -23,19 +23,27 @@ result.
 
 ## Run it (inside the devcontainer)
 
+**Start here — calibrate first (no API key, no cost):**
+
 ```sh
-export ANTHROPIC_API_KEY=...      # forwarded from the host into the container
 cd experiments/loom-ultralight
-./run.sh
+./run.sh                       # dafny verify + 8/8 mutant calibration, then STOPS
 ```
 
-`run.sh` does three things:
+Only once calibration is green, run the experiment (this **spends API tokens**):
+
+```sh
+export ANTHROPIC_API_KEY=...   # forwarded from the host into the container
+./run.sh --full
+```
+
+What runs:
 
 1. **AC-1** — `dafny verify canonicalize.dfy` (GoldSpec + Idempotent must verify).
 2. **AC-2** — `cargo run -- --calibrate`: the gold spec must be valid against the
-   reference impl and kill **8/8** mutants. No API, no cost — run this first.
-3. **M-0002** — `cargo run -- --run`: API calls per model × condition × trial,
-   score each authored spec, print the kill-rate table and the per-model gap.
+   reference impl and kill **8/8** mutants. *Plain `./run.sh` stops here.*
+3. **M-0002** — `cargo run -- --run` (only with `--full`): API calls per model ×
+   condition × trial; prints the kill-rate table and the per-model gap.
 
 Knobs (env): `LOOM_TRIALS` (default 10), `LOOM_DAFNY_TIMEOUT` seconds (default
 30). Raw responses + `results.json` land under `runs/<unix-ts>/` (gitignored).
