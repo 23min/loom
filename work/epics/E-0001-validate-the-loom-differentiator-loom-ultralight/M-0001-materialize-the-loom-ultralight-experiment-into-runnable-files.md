@@ -10,7 +10,7 @@ acs:
       status: met
     - id: AC-2
       title: gold spec kills all 8 mutants (8/8 calibration)
-      status: open
+      status: met
     - id: AC-3
       title: experiment harness materialized and runnable
       status: open
