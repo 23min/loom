@@ -256,10 +256,13 @@ fn extract_spec_ensures(resp: &str) -> Option<String> {
 
 /// One Anthropic Messages call with a small retry on transient failures.
 fn call_api(key: &str, model: &str, prompt: &str) -> Result<String, String> {
+    // No `temperature`: the Opus 4.7/4.8 generation removed sampling parameters
+    // and 400s if `temperature`/`top_p`/`top_k` are sent. Sonnet 4.6 / Haiku 4.5
+    // default to temperature 1.0 anyway, so omitting it keeps trial-to-trial
+    // variance across all three models while letting the Opus arm run.
     let body = serde_json::json!({
         "model": model,
         "max_tokens": 2048,
-        "temperature": 1.0,
         "messages": [{ "role": "user", "content": prompt }],
     });
     let mut last = String::new();
