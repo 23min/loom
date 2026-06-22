@@ -1,7 +1,7 @@
 ---
 id: M-0001
 title: Materialize the loom-ultralight experiment into runnable files
-status: draft
+status: in_progress
 parent: E-0001
 tdd: advisory
 acs:
