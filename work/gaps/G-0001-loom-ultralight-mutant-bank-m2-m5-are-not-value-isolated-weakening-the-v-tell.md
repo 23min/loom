@@ -1,8 +1,10 @@
 ---
 id: G-0001
 title: 'loom-ultralight mutant bank: M2/M5 are not value-isolated, weakening the V-tell'
-status: open
+status: addressed
 discovered_in: M-0001
+addressed_by_commit:
+    - 280c1f4
 ---
 ## Problem
 
