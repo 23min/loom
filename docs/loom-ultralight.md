@@ -83,10 +83,10 @@ Each replaces the body of `Canonicalize`. The gold spec kills all eight; a weak 
 | Mutant | Buggy body | Bug | Killed by |
 |---|---|---|---|
 | M1 no-pad | `Id(x.kind, x.value, x.width)` | narrow ids not padded | W |
-| M2 value+1 | `Id(x.kind, x.value+1, if x.width>=PAD then x.width else PAD)` | mangles value | **V** |
+| M2 div-10 | `Id(x.kind, x.value/10, if x.width>=PAD then x.width else PAD)` | drops last digit of value | **V** |
 | M3 always-PAD | `Id(x.kind, x.value, PAD)` | shrinks wide ids | W |
 | M4 drop-kind | `Id("", x.value, if x.width>=PAD then x.width else PAD)` | loses kind | K |
-| M5 zero-value | `Id(x.kind, 0, PAD)` | destroys value | **V** |
+| M5 zero-value | `Id(x.kind, 0, if x.width>=PAD then x.width else PAD)` | zeroes value | **V** |
 | M6 pad-to-3 | `Id(x.kind, x.value, if x.width>=PAD then x.width else 3)` | off-by-one width | W |
 | M7 value-0-bug | `Id(x.kind, if x.value==0 then 1 else x.value, if x.width>=PAD then x.width else PAD)` | corner-case value bug | **V** |
 | M8 over-pad | `Id(x.kind, x.value, if x.width>=PAD then x.width else PAD+1)` | pads to 5, not 4 | W |

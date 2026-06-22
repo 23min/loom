@@ -60,15 +60,22 @@ For a candidate spec `S`: pair it with each implementation and `dafny verify`.
 `kill_rate(S) = killed / (killed + survived)`. Validity gate: `S` must verify
 against the **reference** impl, else it is over-strong and excluded.
 
-## Known limitation — the value-tell is not clean (tracked as `G-0001`)
+## The value-tell is clean — three V-only mutants (`G-0001`, resolved)
 
-The mutant bank is meant to make value-preservation (V) the discriminating tell,
-but as transcribed only **M7** is purely value-discriminating. **M2** also breaks
-wellformedness (F) and **M5** also breaks width (W), so a spec that drops V but
-keeps K/W/F still kills both — surviving only M7 (kill-rate **7/8**, not the ≤5/8
-that `docs/loom-ultralight.md` §3.3 predicts). This does **not** affect calibration
-(the gold spec still kills 8/8); it weakens the discrimination the experiment
-relies on at M-0002. See gap `G-0001` (`aiwf show G-0001`) for the options.
+The mutant bank makes value-preservation (V) the discriminating tell: **M2**
+(`value/10`), **M5** (`zero-value`), and **M7** (`value-0-bug`) each break **only**
+V, leaving kind (K), width (W), and wellformedness (F) intact. So a "gamed" spec
+that drops the V clause but keeps K/W/F survives all three and scores exactly
+**5/8**, while the gold spec kills **8/8** — the ≤5/8 prediction in
+`docs/loom-ultralight.md` §3.3 and a 3/8 gold-vs-gamed gap.
+
+This was not always so: as first transcribed, M2 also broke F (the `value+1`
+increment overflowed the canonical width at a digit boundary) and M5 also broke
+W (it forced width to `PAD`, shrinking already-wide ids), so the gamed spec
+mistakenly killed both and the tell collapsed to a single mutant (7/8). Gap
+`G-0001` recorded and resolved that — both are now value-isolated. The fix is
+verifiable: re-run `./run.sh` (gold 8/8), and the gamed-spec score (5/8) is the
+gold `ensures` minus the `(V)` clause, checked against each mutant.
 
 ## Known container-side caveats (expected, not bugs)
 
