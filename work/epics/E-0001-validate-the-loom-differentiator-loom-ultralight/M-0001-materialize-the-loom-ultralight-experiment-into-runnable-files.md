@@ -13,7 +13,7 @@ acs:
       status: met
     - id: AC-3
       title: experiment harness materialized and runnable
-      status: open
+      status: met
 ---
 ## Goal
 
