@@ -1,6 +1,8 @@
 {
   "name": "loom Dev",
-  "image": "mcr.microsoft.com/devcontainers/go:2-1.25-bookworm",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
   "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/${localWorkspaceFolderBasename},type=bind,consistency=cached",
   "initializeCommand": "bash .devcontainer/initialize.sh",
@@ -9,19 +11,6 @@
     "source=/tmp/.loom-claude-plugins-mount,target=/home/vscode/.claude/plugins,type=bind,consistency=cached",
     "source=/tmp/.loom-gh-mount,target=/home/vscode/.config/gh,type=bind,consistency=cached"
   ],
-  "features": {
-    "ghcr.io/devcontainers/features/common-utils:2": {
-      "installZsh": true,
-      "configureZshAsDefaultShell": true,
-      "installOhMyZsh": true,
-      "username": "vscode"
-    },
-    "ghcr.io/devcontainers/features/github-cli:1": {},
-    "ghcr.io/devcontainers/features/dotnet:2": {
-      "version": "8.0"
-    },
-    "ghcr.io/devcontainers/features/rust:1": {}
-  },
   "updateContentCommand": "bash .devcontainer/init.sh",
   "postCreateCommand": "bash .devcontainer/init.sh",
   "remoteUser": "vscode",
@@ -29,7 +18,6 @@
     "LOOM_DEVCONTAINER": "1"
   },
   "remoteEnv": {
-    "PATH": "/home/vscode/go/bin:/usr/local/go/bin:/home/vscode/.dotnet/tools:/home/vscode/.local/bin:/usr/local/cargo/bin:${containerEnv:PATH}",
     "ANTHROPIC_API_KEY": "${localEnv:ANTHROPIC_API_KEY}"
   },
   "customizations": {
@@ -37,12 +25,6 @@
       "settings": {
         "terminal.integrated.defaultProfile.linux": "zsh",
         "editor.formatOnSave": true,
-        "[go]": {
-          "editor.defaultFormatter": "golang.go",
-          "editor.codeActionsOnSave": {
-            "source.organizeImports": "explicit"
-          }
-        },
         "[rust]": {
           "editor.defaultFormatter": "rust-lang.rust-analyzer"
         },
@@ -50,7 +32,6 @@
         "yaml.format.enable": true
       },
       "extensions": [
-        "golang.go",
         "rust-lang.rust-analyzer",
         "dafny-lang.ide-vscode",
         "redhat.vscode-yaml",
