@@ -9,7 +9,7 @@ tdd: advisory
 acs:
     - id: AC-1
       title: N trials per condition produce a kill-rate table
-      status: open
+      status: met
     - id: AC-2
       title: kill-rate gap (disinterested minus incentivized) computed
       status: open
