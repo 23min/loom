@@ -1,7 +1,7 @@
 ---
 id: M-0002
 title: Run the loom-ultralight experiment and record the kill-rate gap
-status: in_progress
+status: done
 parent: E-0001
 depends_on:
     - M-0001
