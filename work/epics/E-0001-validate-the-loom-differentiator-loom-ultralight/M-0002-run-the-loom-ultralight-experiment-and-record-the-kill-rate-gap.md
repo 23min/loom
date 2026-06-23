@@ -12,7 +12,7 @@ acs:
       status: met
     - id: AC-2
       title: kill-rate gap (disinterested minus incentivized) computed
-      status: open
+      status: met
     - id: AC-3
       title: result interpreted against pre-registered outcomes
       status: open
