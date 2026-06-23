@@ -1,7 +1,10 @@
 ---
 id: G-0003
 title: 'loom-ultralight: value-tell mispredicts; bank under-samples the width tell'
-status: open
+status: addressed
+addressed_by_commit:
+    - b26662f
+    - 15d891e
 ---
 ## Problem
 
