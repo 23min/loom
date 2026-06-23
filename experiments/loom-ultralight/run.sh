@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # loom-ultralight — calibrate first; the paid experiment is opt-in.
 #
-#   ./run.sh           Calibrate only: dafny verify + the 8/8 mutant check.
+#   ./run.sh           Calibrate only: dafny verify + the full-bank mutant check.
 #                      No API key, no cost. START HERE.
 #   ./run.sh --full    Also run the experiment (needs ANTHROPIC_API_KEY; spends
 #                      API tokens).
@@ -12,7 +12,7 @@ echo "== Step 0a: dafny verify canonicalize.dfy (GoldSpec + Idempotent — M-000
 dafny verify canonicalize.dfy
 
 echo
-echo "== Step 0b: calibrate — gold spec must be valid and kill 8/8 (M-0001 AC-2) =="
+echo "== Step 0b: calibrate — gold spec must be valid and kill the full mutant bank (M-0001 AC-2) =="
 cargo run --release --quiet -- --calibrate
 
 if [[ "${1:-}" != "--full" ]]; then

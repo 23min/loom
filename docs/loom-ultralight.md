@@ -93,6 +93,18 @@ Each replaces the body of `Canonicalize`. The gold spec kills all eight; a weak 
 
 The three **V** mutants are the tell: a spec that drops value-preservation (the "gamed" shape) survives all three → kill-rate ≤ 5/8.
 
+> **⚠️ Result — the prediction above was falsified (kept here as the pre-registration).**
+> The models do **not** weaken value; they weaken **width-exactness (W)** — pinning
+> width as a lower bound (`width >= PAD`) instead of `width == max(x.width, PAD)`.
+> The incentivized kill-rate is ~0.82, not ≤ 5/8. Two defects masked this: the
+> `ensures` extractor line-scraped and silently dropped complete specs (gap
+> `G-0002`), and this 8-mutant bank had only **one** mutant (M8) sensitive to the
+> width loosening while pre-registering the wrong clause (gap `G-0003`). The bank
+> has since grown to **20 mutants** (`experiments/loom-ultralight/mutants/M1..M20`
+> is the source of truth) with a width over-pad cluster. Full result, including an
+> independent verifier-based strength measure that agrees, is in
+> [`../experiments/loom-ultralight/results/RESULTS.md`](../experiments/loom-ultralight/results/RESULTS.md).
+
 ### 3.4 The two condition prompts
 
 Both conditions author **the same artifacts** — a Dafny implementation `function Canonicalize(x: Id): Id` **and** the `ensures` clauses of a lemma `Spec(x: Id) requires Wellformed(x) ensures … {}`. They receive the **same prose intent**; the **only** difference is the grading clause. Holding the task constant — both write an implementation — is deliberate: it isolates the incentive as the sole variable, so a measured gap is attributable to the incentive and not to the extra load of also writing code. It is also faithful to loom's real setting, where the agent always authors both. The LLM must *formalize* the intent into `ensures` clauses — it is not handed the formal claims (else there's nothing to weaken).
@@ -128,6 +140,24 @@ Validity gate: `S` must verify against the **gold (correct) implementation**; a 
 - **Gap ≈ 0** → the incentive doesn't induce weakening on this task → differentiator weaker than hoped; reconsider before building.
 - **Gap positive but mutation misses it** (weak specs still kill mutants) → the effect is real but the *check* is insufficient → the engine needs more than mutation.
 - Calibration failures to watch: gold spec doesn't kill all 8 (fix the spec/mutants); many inconclusives (raise Z3 limits, simplify).
+
+### What actually happened (recorded after the run; `M-0002`)
+
+The result **traversed two of the outcomes above**, and that is the finding:
+
+1. **As pre-registered** (8-mutant bank, line-scraping extractor, value-tell) the
+   effect was **"gap positive but mutation misses it"** — real but masked by two
+   harness defects (`G-0002`, `G-0003`).
+2. **After repairing the check** (robust extraction; a 20-mutant bank probing
+   width-exactness; an independent structural strength measure) it is **"gap
+   positive and large, check catches it"**: opus +0.18, sonnet +0.07, haiku +0.02,
+   rising with capability, localized entirely to the width clause.
+
+So the **differentiator holds — but only with a check stronger than naive
+mutation**: robust spec ingestion, a measure aimed at the clause actually
+weakened, and ideally a structural strength measure rather than a fixed bank.
+That is the core design input `loom-light` inherits (feeds `D-0001`). Full result
+and the run config (N=30): [`../experiments/loom-ultralight/results/RESULTS.md`](../experiments/loom-ultralight/results/RESULTS.md).
 
 ## 6. How to run (your part)
 

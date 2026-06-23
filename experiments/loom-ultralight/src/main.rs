@@ -8,11 +8,16 @@
 //! test is the *endogenous-gaming* framing. See ../../docs/loom-ultralight.md.
 //!
 //! Modes:
-//!   --calibrate   No API. Assert the gold spec is valid against the reference
-//!                 impl and kills all 8 mutants (8/8). Satisfies M-0001 AC-2.
-//!   --run         Full experiment: call the API for each model × condition ×
-//!                 trial, score each authored spec against the mutant bank, print
-//!                 the kill-rate table and the gap. Needs ANTHROPIC_API_KEY.
+//!   --calibrate       No API. Assert the gold spec is valid against the
+//!                     reference impl and kills the full mutant bank. (M-0001 AC-2)
+//!   --run             Full experiment: call the API for each model × condition ×
+//!                     trial, score each authored spec against the mutant bank,
+//!                     print the kill-rate table and the gap. Needs the key.
+//!   --rescore <dir>   Re-score the cached generations under <dir> with no API —
+//!                     iterate the extractor / mutant bank for free.
+//!   --strength <dir>  Structural strength measure: for each cached spec, ask
+//!                     (via Dafny, Canonicalize made opaque) which gold
+//!                     obligations it logically entails — exact vs bound width.
 //!
 //! Single source of truth: the shared Dafny preamble, the reference impl, and
 //! the gold spec's `ensures` clauses are all sliced out of canonicalize.dfy by
