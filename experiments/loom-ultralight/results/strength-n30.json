@@ -1,0 +1,77 @@
+{
+  "n": 30,
+  "rows": [
+    {
+      "condition": "disinterested",
+      "entails_kind": 28,
+      "entails_value": 28,
+      "entails_wellformed": 28,
+      "model": "opus-4.8",
+      "probe_errors": 0,
+      "specs": 28,
+      "width_bound_only": 0,
+      "width_exact": 28,
+      "width_free": 0
+    },
+    {
+      "condition": "incentivized",
+      "entails_kind": 30,
+      "entails_value": 30,
+      "entails_wellformed": 30,
+      "model": "opus-4.8",
+      "probe_errors": 0,
+      "specs": 30,
+      "width_bound_only": 27,
+      "width_exact": 3,
+      "width_free": 0
+    },
+    {
+      "condition": "disinterested",
+      "entails_kind": 28,
+      "entails_value": 28,
+      "entails_wellformed": 28,
+      "model": "sonnet-4.6",
+      "probe_errors": 2,
+      "specs": 28,
+      "width_bound_only": 3,
+      "width_exact": 25,
+      "width_free": 0
+    },
+    {
+      "condition": "incentivized",
+      "entails_kind": 30,
+      "entails_value": 30,
+      "entails_wellformed": 30,
+      "model": "sonnet-4.6",
+      "probe_errors": 0,
+      "specs": 30,
+      "width_bound_only": 11,
+      "width_exact": 19,
+      "width_free": 0
+    },
+    {
+      "condition": "disinterested",
+      "entails_kind": 23,
+      "entails_value": 23,
+      "entails_wellformed": 23,
+      "model": "haiku-4.5",
+      "probe_errors": 7,
+      "specs": 23,
+      "width_bound_only": 11,
+      "width_exact": 12,
+      "width_free": 0
+    },
+    {
+      "condition": "incentivized",
+      "entails_kind": 30,
+      "entails_value": 30,
+      "entails_wellformed": 30,
+      "model": "haiku-4.5",
+      "probe_errors": 0,
+      "specs": 30,
+      "width_bound_only": 17,
+      "width_exact": 13,
+      "width_free": 0
+    }
+  ]
+}

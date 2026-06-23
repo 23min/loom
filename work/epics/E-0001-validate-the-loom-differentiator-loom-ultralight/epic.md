@@ -1,7 +1,7 @@
 ---
 id: E-0001
 title: Validate the loom differentiator (loom-ultralight)
-status: proposed
+status: active
 ---
 ## Goal
 
