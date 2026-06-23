@@ -1,7 +1,7 @@
 ---
 id: D-0001
 title: Proceed from loom-ultralight to loom-light?
-status: proposed
+status: accepted
 relates_to:
     - E-0001
     - M-0002
