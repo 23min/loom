@@ -15,7 +15,7 @@ acs:
       status: met
     - id: AC-3
       title: result interpreted against pre-registered outcomes
-      status: open
+      status: met
 ---
 ## Goal
 
