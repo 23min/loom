@@ -1,7 +1,9 @@
 ---
 id: G-0002
 title: 'loom-ultralight: ensures extractor drops multi-line specs, biasing the result'
-status: open
+status: addressed
+addressed_by_commit:
+    - b26662f
 ---
 ## Problem
 
