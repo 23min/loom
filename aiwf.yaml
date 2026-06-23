@@ -1,2 +1,9 @@
 # aiwf consumer-repo config. Append top-level keys (e.g. html: { commit_output: true })
 # to opt into framework features. See `aiwf doctor` and the README for the full list.
+
+# wrap.md is the artefact emitted by aiwf-extensions:aiwfx-wrap-epic.
+# It's not a kernel-recognized entity, so whitelist the path so
+# `aiwf check` doesn't flag it as an unexpected-tree-file.
+tree:
+  allow_paths:
+    - "work/epics/E-*/wrap.md"
