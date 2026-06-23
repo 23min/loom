@@ -365,8 +365,17 @@ fn main() {
             });
             rescore(&PathBuf::from(dir), &workdir, &preamble, &ref_impl, &mutants, timeout);
         }
+        "--strength" => {
+            let dir = std::env::args().nth(2).unwrap_or_else(|| {
+                eprintln!("usage: loom-ultralight --strength <runs-dir>");
+                std::process::exit(2);
+            });
+            strength(&PathBuf::from(dir), &workdir, &preamble, timeout);
+        }
         _ => {
-            eprintln!("usage: loom-ultralight (--calibrate | --run | --rescore <runs-dir>)");
+            eprintln!(
+                "usage: loom-ultralight (--calibrate | --run | --rescore <dir> | --strength <dir>)"
+            );
             std::process::exit(2);
         }
     }
@@ -630,4 +639,162 @@ fn rescore(
         },
     );
     print_results(n, mutants.len(), &means, &table, runs_dir);
+}
+
+// Gold obligations, as goal expressions, for the structural strength measure.
+// Width is a two-rung ladder: a spec that entails the exact width *pins* it; one
+// that entails only the lower bound merely *bounds* it; one that entails neither
+// leaves it *free*. (C) measures spec strength directly — not via the mutant bank.
+const STRENGTH_GOALS: &[(&str, &str)] = &[
+    ("K", "Canonicalize(x).kind == x.kind"),
+    ("V", "Canonicalize(x).value == x.value"),
+    ("F", "Wellformed(Canonicalize(x))"),
+    ("W_exact", "Canonicalize(x).width == (if x.width >= PAD then x.width else PAD)"),
+    ("W_bound", "Canonicalize(x).width >= PAD"),
+];
+
+/// Turn a candidate's `ensures` block into a `requires` block (assume the spec).
+/// Only the clause-leading `ensures` keyword is rewritten; multi-line continuation
+/// lines (var-bindings, &&-chains) ride along unchanged.
+fn ensures_to_requires(spec_ensures: &str) -> String {
+    spec_ensures
+        .lines()
+        .map(|l| match l.trim_start().strip_prefix("ensures") {
+            Some(rest) => format!("  requires{rest}"),
+            None => l.to_string(),
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Assemble a strength probe: the preamble + an OPAQUE (abstract) `Canonicalize`,
+/// the candidate spec assumed as `requires`, and one gold obligation as the goal.
+/// If Dafny proves the goal, the candidate spec logically entails that obligation
+/// for *any* implementation — an implementation-independent strength measure.
+fn assemble_strength(preamble: &str, assume: &str, goal: &str) -> String {
+    format!(
+        "{preamble}\n\nfunction {{:opaque}} Canonicalize(x: Id): Id {{ x }}\n\n\
+         lemma Q(x: Id)\n  requires Wellformed(x)\n{assume}\n  ensures {goal}\n{{ }}\n"
+    )
+}
+
+/// True iff the assumed spec entails `goal` (the probe verifies).
+fn entails(workdir: &Path, preamble: &str, assume: &str, goal: &str, timeout: Duration) -> bool {
+    let f = workdir.join("_strength.dfy");
+    fs::write(&f, assemble_strength(preamble, assume, goal)).unwrap();
+    matches!(run_dafny(&f, timeout).0, Outcome::Verified)
+}
+
+#[derive(Default)]
+struct StrengthTally {
+    specs: usize,       // specs whose probe harness compiled (the denominator)
+    probe_error: usize, // specs that failed to resolve under the probe (excluded)
+    k: usize,
+    v: usize,
+    f: usize,
+    w_exact: usize,
+    w_bound: usize, // bound-only (entails >= PAD but not exact)
+    w_free: usize,
+}
+
+/// Measure each cached spec's structural strength — for every gold obligation,
+/// does the spec logically entail it? — and aggregate per model × condition.
+fn strength(runs_dir: &Path, workdir: &Path, preamble: &str, timeout: Duration) {
+    if !runs_dir.is_dir() {
+        eprintln!("--strength: {} is not a directory", runs_dir.display());
+        std::process::exit(2);
+    }
+    let n: usize = std::env::var("LOOM_TRIALS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(10);
+    println!("measuring structural spec strength in {}", runs_dir.display());
+
+    let goal = |key: &str| STRENGTH_GOALS.iter().find(|(k, _)| *k == key).unwrap().1;
+    let mut tallies: BTreeMap<(String, String), StrengthTally> = BTreeMap::new();
+
+    for (mlabel, _mid) in MODELS {
+        for cond in CONDITIONS {
+            let t = tallies
+                .entry((mlabel.to_string(), cond.to_string()))
+                .or_default();
+            for trial in 1..=n {
+                let p = runs_dir.join(format!("{mlabel}_{cond}_{trial}.txt"));
+                let resp = match fs::read_to_string(&p) {
+                    Ok(r) => r,
+                    Err(_) => continue,
+                };
+                let ensures = match extract_spec_ensures(&resp) {
+                    Some(e) => e,
+                    None => continue,
+                };
+                let assume = ensures_to_requires(&ensures);
+                // Guard: if the probe harness does not even resolve (the spec
+                // references an undefined name, or its assumed clauses don't
+                // type-check), a trivially-true goal fails. Count it as a probe
+                // error and exclude it — do not misread it as a weak spec.
+                if !entails(workdir, preamble, &assume, "true", timeout) {
+                    t.probe_error += 1;
+                    println!("[{mlabel}/{cond}/{trial}] probe error (did not resolve) — excluded");
+                    continue;
+                }
+                t.specs += 1;
+                if entails(workdir, preamble, &assume, goal("K"), timeout) {
+                    t.k += 1;
+                }
+                if entails(workdir, preamble, &assume, goal("V"), timeout) {
+                    t.v += 1;
+                }
+                if entails(workdir, preamble, &assume, goal("F"), timeout) {
+                    t.f += 1;
+                }
+                // Width ladder: exact pins it; else bound-only; else free.
+                if entails(workdir, preamble, &assume, goal("W_exact"), timeout) {
+                    t.w_exact += 1;
+                } else if entails(workdir, preamble, &assume, goal("W_bound"), timeout) {
+                    t.w_bound += 1;
+                } else {
+                    t.w_free += 1;
+                }
+                println!("[{mlabel}/{cond}/{trial}] strength probed");
+            }
+        }
+    }
+
+    let pct = |a: usize, b: usize| if b == 0 { 0.0 } else { 100.0 * a as f64 / b as f64 };
+    println!("\n=== structural spec strength (entailment of each gold obligation) ===");
+    println!(
+        "{:<12} {:<14} {:>6} {:>6} {:>6} {:>6} {:>6}   {:>7} {:>7} {:>6}",
+        "model", "condition", "specs", "K%", "V%", "F%", "errs", "W:exact", "W:bound", "W:free"
+    );
+    let mut rows = Vec::new();
+    for (mlabel, _mid) in MODELS {
+        for cond in CONDITIONS {
+            let t = &tallies[&(mlabel.to_string(), cond.to_string())];
+            println!(
+                "{:<12} {:<14} {:>6} {:>5.0}% {:>5.0}% {:>5.0}% {:>6}   {:>7} {:>7} {:>6}",
+                mlabel,
+                cond,
+                t.specs,
+                pct(t.k, t.specs),
+                pct(t.v, t.specs),
+                pct(t.f, t.specs),
+                t.probe_error,
+                t.w_exact,
+                t.w_bound,
+                t.w_free
+            );
+            rows.push(serde_json::json!({
+                "model": mlabel, "condition": cond, "specs": t.specs, "probe_errors": t.probe_error,
+                "entails_kind": t.k, "entails_value": t.v, "entails_wellformed": t.f,
+                "width_exact": t.w_exact, "width_bound_only": t.w_bound, "width_free": t.w_free,
+            }));
+        }
+    }
+    let out = serde_json::json!({ "n": n, "rows": rows });
+    let tmp = runs_dir.join("strength.json.tmp");
+    let final_path = runs_dir.join("strength.json");
+    fs::write(&tmp, serde_json::to_string_pretty(&out).unwrap()).unwrap();
+    fs::rename(&tmp, &final_path).unwrap();
+    println!("\nstrength.json written to {}", final_path.display());
 }
