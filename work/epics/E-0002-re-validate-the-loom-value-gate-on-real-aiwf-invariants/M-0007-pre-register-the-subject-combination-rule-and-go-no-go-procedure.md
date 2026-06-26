@@ -14,6 +14,9 @@ acs:
     - id: AC-2
       title: The rule is total and falsifiable over every verdict pair
       status: open
+    - id: AC-3
+      title: Artifact lands before the run for the M-0006 ancestor check
+      status: open
 ---
 ## Goal
 
@@ -97,4 +100,6 @@ pre-registrations get.
 ### AC-1 — Combination-rule pre-registration artifact is committed
 
 ### AC-2 — The rule is total and falsifiable over every verdict pair
+
+### AC-3 — Artifact lands before the run for the M-0006 ancestor check
 
