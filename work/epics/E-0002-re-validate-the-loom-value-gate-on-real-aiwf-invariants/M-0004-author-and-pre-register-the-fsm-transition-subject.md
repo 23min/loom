@@ -13,6 +13,9 @@ acs:
     - id: AC-2
       title: 'Mutant bank: gold kills full bank, isolating mutant per tell'
       status: open
+    - id: AC-3
+      title: Each obligation probes as isolable single-input goal via M-0003 gate
+      status: open
 ---
 ## Goal
 
@@ -106,4 +109,6 @@ single-input goals before the pre-registration is finalized. (aiwf source cloned
 ### AC-1 — Gold FSM spec + reference impl verify
 
 ### AC-2 — Mutant bank: gold kills full bank, isolating mutant per tell
+
+### AC-3 — Each obligation probes as isolable single-input goal via M-0003 gate
 
