@@ -1,7 +1,7 @@
 ---
 id: E-0002
 title: Re-validate the loom value-gate on real aiwf invariants
-status: proposed
+status: active
 ---
 
 # E-0002 — Re-validate the loom value-gate on real aiwf invariants
