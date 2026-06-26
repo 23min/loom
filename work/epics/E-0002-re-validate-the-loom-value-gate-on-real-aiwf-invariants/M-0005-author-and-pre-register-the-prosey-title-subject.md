@@ -12,7 +12,7 @@ acs:
       status: met
     - id: AC-2
       title: Clause-isolated mutant bank that the gold spec kills
-      status: open
+      status: met
     - id: AC-3
       title: Each gold obligation probes as an isolable goal through the gate
       status: open
