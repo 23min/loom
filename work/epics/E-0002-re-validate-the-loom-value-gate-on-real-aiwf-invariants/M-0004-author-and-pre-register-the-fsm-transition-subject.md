@@ -1,7 +1,7 @@
 ---
 id: M-0004
 title: Author and pre-register the FSM-transition subject
-status: draft
+status: in_progress
 parent: E-0002
 depends_on:
     - M-0003
