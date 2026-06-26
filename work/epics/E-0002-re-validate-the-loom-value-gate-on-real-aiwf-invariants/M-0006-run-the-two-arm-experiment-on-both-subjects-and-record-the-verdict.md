@@ -6,6 +6,10 @@ parent: E-0002
 depends_on:
     - M-0007
 tdd: advisory
+acs:
+    - id: AC-1
+      title: Both arms run on both subjects, scored by kill-rate and structural strength
+      status: open
 ---
 ## Goal
 
@@ -91,3 +95,6 @@ re-validation duty and feeds any successor loom-light epic.
 ## Reviewer notes
 
 - (none)
+
+### AC-1 — Both arms run on both subjects, scored by kill-rate and structural strength
+
