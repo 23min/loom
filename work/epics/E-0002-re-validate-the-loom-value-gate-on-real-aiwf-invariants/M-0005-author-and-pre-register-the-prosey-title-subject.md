@@ -18,7 +18,7 @@ acs:
       status: met
     - id: AC-4
       title: Pre-registration committed with a total falsifiable verdict map
-      status: open
+      status: met
 ---
 ## Goal
 
