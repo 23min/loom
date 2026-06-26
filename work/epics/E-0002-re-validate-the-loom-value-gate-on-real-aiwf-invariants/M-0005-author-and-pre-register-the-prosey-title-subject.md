@@ -39,7 +39,11 @@ M-0003's generalized gate. (aiwf source at `/tmp/aiwf-src`.)
   M-0003 gate.
 - A **pre-registration artifact is committed** naming the full obligation set, the
   obligation(s) predicted to weaken (the multi-sentence rule is the candidate), the
-  falsifying outcome, and the strength thresholds — landed before the M-0006 run.
+  falsifying outcome, the strength thresholds, **and a total, falsifiable mapping
+  from this subject's possible run observations into exactly one of reproduced /
+  not-reproduced / inconclusive (including the inconclusive boundary)** — so no
+  per-subject verdict judgment remains for after the run. Landed before the M-0006
+  run.
 
 ## Constraints
 
