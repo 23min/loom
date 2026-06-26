@@ -9,7 +9,7 @@ tdd: advisory
 acs:
     - id: AC-1
       title: Gold FSM spec + reference impl verify
-      status: open
+      status: met
     - id: AC-2
       title: 'Mutant bank: gold kills full bank, isolating mutant per tell'
       status: open
