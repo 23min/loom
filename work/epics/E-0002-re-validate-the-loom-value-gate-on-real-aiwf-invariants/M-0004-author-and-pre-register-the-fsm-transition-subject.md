@@ -39,25 +39,8 @@ single-input goals before the pre-registration is finalized. (aiwf source cloned
 
 ## Acceptance criteria
 
-<!-- Candidate ACs; formalized via `aiwf add ac` at start-milestone. -->
-
-- A gold spec + reference implementation for FSM transition legality exist and
-  `dafny verify` passes (gold valid against the reference impl). Statuses are a
-  finite Dafny datatype; legality is an opaque predicate over ground
-  `(kind, from, to)` tuples.
-- A clause-isolated mutant bank exists; the gold spec **kills the full bank** at
-  calibration; and the bank contains a mutant **isolating each pre-registered
-  predicted-tell obligation** — including the negative-space/exclusion obligation —
-  at the granularity the strength gate distinguishes (the G-0003 guard).
-- Each gold obligation **probes as an isolable single-input goal** through the
-  M-0003 gate.
-- A **pre-registration artifact is committed** naming the full obligation set, the
-  obligation(s) predicted to weaken under the incentivized arm, the outcome that
-  would falsify the prediction, the strength thresholds, **and a total, falsifiable
-  mapping from this subject's possible run observations into exactly one of
-  reproduced / not-reproduced / inconclusive (including the inconclusive boundary)**
-  — so no per-subject verdict judgment remains for after the run. Landed before the
-  M-0006 run.
+Tracked as `acs[]` in frontmatter (AC-1 … AC-4); the full detail lives under the
+per-AC sections at the foot of this spec.
 
 ## Constraints
 
@@ -111,9 +94,31 @@ single-input goals before the pre-registration is finalized. (aiwf source cloned
 
 ### AC-1 — Gold FSM spec + reference impl verify
 
+A gold spec + reference implementation for FSM transition legality exist and
+`dafny verify` passes (gold valid against the reference impl). Statuses are a
+finite Dafny datatype; legality is an opaque predicate over ground
+`(kind, from, to)` tuples.
+
 ### AC-2 — Mutant bank: gold kills full bank, isolating mutant per tell
+
+A clause-isolated mutant bank exists; the gold spec **kills the full bank** at
+calibration; and the bank contains a mutant **isolating each pre-registered
+predicted-tell obligation** — including the negative-space/exclusion obligation —
+at the granularity the strength gate distinguishes (the G-0003 guard).
 
 ### AC-3 — Each obligation probes as isolable single-input goal via M-0003 gate
 
+Each gold obligation **probes as an isolable single-input goal** through the M-0003
+gate (a `StrengthSubject` whose obligations are exclusion goals over ground tuples
+and bounded quantifiers over the finite status datatype).
+
 ### AC-4 — Committed pre-registration with falsifiable verdict mapping
+
+A **pre-registration artifact is committed** naming the full obligation set, the
+obligation(s) predicted to weaken under the incentivized arm, the outcome that
+would falsify the prediction, the strength thresholds, **and a total, falsifiable
+mapping from this subject's possible run observations into exactly one of
+reproduced / not-reproduced / inconclusive (including the inconclusive boundary)**
+— so no per-subject verdict judgment remains for after the run. Landed before the
+M-0006 run.
 
