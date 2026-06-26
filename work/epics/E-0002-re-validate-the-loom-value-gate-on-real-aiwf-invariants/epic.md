@@ -58,6 +58,10 @@ epic, gated on this result.
 - A **committed pre-registration** per subject — the full gold-obligation set, the
   obligation(s) predicted to weaken, the falsifying outcome, and the strength
   thresholds — landed *before* that subject's paid run.
+- A **committed cross-subject combination-rule pre-registration** — the total,
+  falsifiable mapping from the two per-subject verdicts (reproduced / not-reproduced
+  / inconclusive) to a single go/no-go — landed *before* the run, in its own
+  milestone.
 - Generalizing the structural strength gate (`--strength`) from the hardcoded
   canonicalize obligations to a **per-subject obligation list** (over an opaque
   function/predicate); no arbitrary-spec parsing required.
@@ -81,7 +85,9 @@ epic, gated on this result.
   milestone is promoted to `in_progress`; the recorded run result **names the
   pre-registration commit SHA and that SHA is a git ancestor of the run commit**.
   Ordering is verifiable from git, not asserted in prose — the integrity lesson
-  from M-0002; no post-hoc rescue of a falsified prediction.
+  from M-0002; no post-hoc rescue of a falsified prediction. The cross-subject
+  combination-rule pre-registration is held to the same boundary — committed in its
+  own milestone before the run, its SHA a git ancestor of the run commit.
 - **Mutant-bank granularity (the `G-0003` guard).** "Gold kills the full bank" is
   necessary but not sufficient: each subject's bank must include a mutant that
   isolates **each pre-registered predicted-tell obligation at its exact/bound
@@ -119,17 +125,18 @@ epic, gated on this result.
       **both** the mutation kill-rate **and** the generalized structural strength
       measure.
 - [ ] Each subject's result is mapped to its pre-registered edges (reproduced /
-      not-reproduced / inconclusive), and a **pre-registered subject-combination
-      rule** turns the per-subject results into a single epic-level go/no-go on
-      building the full loom-light pipeline, recorded as a decision.
+      not-reproduced / inconclusive), and the **combination-rule pre-registration
+      (committed before the run, its SHA a git ancestor of the run commit)** turns
+      the per-subject results into a single epic-level go/no-go on building the full
+      loom-light pipeline, recorded as a decision.
 
 ## Open questions
 
 | Question | Blocking? | Resolution path |
 |---|---|---|
 | The exact slice of each subject (which kinds' transition tables; whether prosey's converse `IsProsey ==> some clause` is in scope) | no | fixed when the subject is authored, before its pre-registration |
-| The pre-registered edges per subject (predicted-tell obligation, strength threshold, minimum gap) **and the subject-combination rule** | yes | committed in the subject-authoring milestone, before any run |
-| Does FSM legality probe cleanly as an opaque relation over the finite status datatype (vs needing a different encoding) | no | confirmed in the gate-generalization milestone before that subject's pre-registration |
+| The pre-registered edges per subject (predicted-tell obligation, strength threshold, minimum gap) | yes | committed in each subject-authoring milestone, before any run; the cross-subject combination rule is pre-registered separately in M-0007 |
+| Does FSM legality probe cleanly as an opaque relation over the finite status datatype (vs needing a different encoding) | no | the general interface is proven in M-0003 (new-shape fixtures); the FSM-specific probe-fit is confirmed when M-0004 authors the subject, before its pre-registration |
 
 ## Risks
 
@@ -142,14 +149,16 @@ epic, gated on this result.
 
 ## Milestones
 
-Sequence: M-0003 → (M-0004 ∥ M-0005) → M-0006. The gate generalization is
-foundational (it confirms each subject's obligations are isolable single-input
-goals before that subject's pre-registration is finalized), so it precedes subject
-authoring; the two subjects then proceed in parallel.
+Sequence: M-0003 → (M-0004 ∥ M-0005) → M-0007 → M-0006. The gate generalization is
+foundational, so it precedes subject authoring; the two subjects then proceed in
+parallel; the cross-subject combination rule is pre-registered (M-0007) once both
+subjects exist but before the run, giving it the same hard before-the-run boundary
+the per-subject pre-registrations get.
 
 | Milestone | Deliverable | Depends on |
 |---|---|---|
-| M-0003 | Generalize the structural strength gate to a per-subject obligation list (regression-verified against the canonicalize N=30 data) | — |
+| M-0003 | Generalize the structural strength gate to a per-subject obligation list (new-shape fixtures + a committed golden regression on the canonicalize N=30 data) | — |
 | M-0004 | Author and pre-register the FSM-transition subject (negative-space tell) | M-0003 |
 | M-0005 | Author and pre-register the prosey-title subject (multi-sentence-rule tell) | M-0003 |
-| M-0006 | Run the two-arm experiment on both subjects and record the verdict (ancestor-SHA guard, combination-rule go/no-go) | M-0004, M-0005 |
+| M-0007 | Pre-register the cross-subject combination rule and go/no-go procedure (total, falsifiable) | M-0004, M-0005 |
+| M-0006 | Run the two-arm experiment on both subjects and record the verdict (ancestor-SHA guard over all pre-registrations, combination-rule go/no-go) | M-0007 |
