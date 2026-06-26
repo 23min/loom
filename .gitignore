@@ -20,3 +20,6 @@ site/
 
 # aiwf: post-commit-regenerated STATUS.md (G-0112)
 STATUS.md
+
+# in-repo git worktrees for ritualized epic/milestone branches
+.claude/worktrees/
