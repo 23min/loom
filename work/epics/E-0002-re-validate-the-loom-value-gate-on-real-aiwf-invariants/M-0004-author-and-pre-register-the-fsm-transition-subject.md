@@ -16,6 +16,9 @@ acs:
     - id: AC-3
       title: Each obligation probes as isolable single-input goal via M-0003 gate
       status: open
+    - id: AC-4
+      title: Committed pre-registration with falsifiable verdict mapping
+      status: open
 ---
 ## Goal
 
@@ -111,4 +114,6 @@ single-input goals before the pre-registration is finalized. (aiwf source cloned
 ### AC-2 — Mutant bank: gold kills full bank, isolating mutant per tell
 
 ### AC-3 — Each obligation probes as isolable single-input goal via M-0003 gate
+
+### AC-4 — Committed pre-registration with falsifiable verdict mapping
 
