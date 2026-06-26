@@ -4,8 +4,7 @@ title: Run the two-arm experiment on both subjects and record the verdict
 status: draft
 parent: E-0002
 depends_on:
-    - M-0004
-    - M-0005
+    - M-0007
 tdd: advisory
 ---
 ## Goal
