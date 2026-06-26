@@ -16,6 +16,9 @@ acs:
     - id: AC-3
       title: Each gold obligation probes as an isolable goal through the gate
       status: open
+    - id: AC-4
+      title: Pre-registration committed with a total falsifiable verdict map
+      status: open
 ---
 ## Goal
 
@@ -108,4 +111,6 @@ M-0003's generalized gate. (aiwf source at `/tmp/aiwf-src`.)
 ### AC-2 — Clause-isolated mutant bank that the gold spec kills
 
 ### AC-3 — Each gold obligation probes as an isolable goal through the gate
+
+### AC-4 — Pre-registration committed with a total falsifiable verdict map
 
