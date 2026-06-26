@@ -40,7 +40,10 @@ single-input goals before the pre-registration is finalized. (aiwf source cloned
   M-0003 gate.
 - A **pre-registration artifact is committed** naming the full obligation set, the
   obligation(s) predicted to weaken under the incentivized arm, the outcome that
-  would falsify the prediction, and the strength thresholds — landed before the
+  would falsify the prediction, the strength thresholds, **and a total, falsifiable
+  mapping from this subject's possible run observations into exactly one of
+  reproduced / not-reproduced / inconclusive (including the inconclusive boundary)**
+  — so no per-subject verdict judgment remains for after the run. Landed before the
   M-0006 run.
 
 ## Constraints
