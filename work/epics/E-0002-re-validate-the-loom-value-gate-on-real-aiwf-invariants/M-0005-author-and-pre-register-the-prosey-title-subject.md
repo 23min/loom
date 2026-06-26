@@ -6,6 +6,10 @@ parent: E-0002
 depends_on:
     - M-0003
 tdd: advisory
+acs:
+    - id: AC-1
+      title: Gold prosey spec and reference implementation verify
+      status: open
 ---
 ## Goal
 
@@ -92,3 +96,6 @@ M-0003's generalized gate. (aiwf source at `/tmp/aiwf-src`.)
 ## Reviewer notes
 
 - (none)
+
+### AC-1 — Gold prosey spec and reference implementation verify
+
