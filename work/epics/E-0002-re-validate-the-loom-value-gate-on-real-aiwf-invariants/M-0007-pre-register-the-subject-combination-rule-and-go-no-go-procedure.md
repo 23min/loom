@@ -7,6 +7,10 @@ depends_on:
     - M-0004
     - M-0005
 tdd: advisory
+acs:
+    - id: AC-1
+      title: Combination-rule pre-registration artifact is committed
+      status: open
 ---
 ## Goal
 
@@ -86,3 +90,6 @@ pre-registrations get.
 ## Reviewer notes
 
 - (none)
+
+### AC-1 — Combination-rule pre-registration artifact is committed
+
