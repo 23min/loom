@@ -9,7 +9,7 @@ tdd: advisory
 acs:
     - id: AC-1
       title: Gold prosey spec and reference implementation verify
-      status: open
+      status: met
     - id: AC-2
       title: Clause-isolated mutant bank that the gold spec kills
       status: open
