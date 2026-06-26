@@ -1,7 +1,7 @@
 ---
 id: M-0007
 title: Pre-register the subject-combination rule and go/no-go procedure
-status: in_progress
+status: done
 parent: E-0002
 depends_on:
     - M-0004
