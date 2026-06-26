@@ -1395,4 +1395,296 @@ mod tests {
             "IsProsey(\"hello world\")",
         ));
     }
+
+    // ===== M-0004: the FSM status-transition subject (Epic + Milestone) =====
+    //
+    // The gold subject lives in fsm.dfy + mutants-fsm/; the obligation list below
+    // is the strength-gate form of the same gold obligations. M-0006 wires this
+    // into the production run path — here it confirms each obligation probes
+    // through the M-0003 gate (AC-3), and the mutant bank calibrates (AC-2).
+
+    /// The FSM legality subject: opaque `IsLegal` over the finite (Kind, Status)
+    /// tuples, with the gold obligation set as probe goals. Keys mirror the gold
+    /// obligation clauses in fsm.dfy (L / X_skip / X_cross / T1 / T2 / D).
+    const FSM_SUBJECT: StrengthSubject = StrengthSubject {
+        opaque_decls: "datatype Kind = Epic | Milestone\n\
+                       datatype Status = Proposed | Active | Draft | InProgress | Done | Cancelled\n\
+                       predicate {:opaque} IsLegal(k: Kind, from: Status, to: Status) { false }",
+        binder: "",
+        requires: "",
+        obligations: &[
+            // (L) positive space — the four legal edges (L1…L4)
+            Obligation::Single {
+                key: "legal_epic_proposed_active",
+                goal: "IsLegal(Epic, Proposed, Active)",
+            },
+            Obligation::Single {
+                key: "legal_epic_active_done",
+                goal: "IsLegal(Epic, Active, Done)",
+            },
+            Obligation::Single {
+                key: "legal_milestone_draft_inprogress",
+                goal: "IsLegal(Milestone, Draft, InProgress)",
+            },
+            Obligation::Single {
+                key: "legal_milestone_inprogress_done",
+                goal: "IsLegal(Milestone, InProgress, Done)",
+            },
+            // (X_skip / X_cross) negative space — the tell
+            Obligation::Single {
+                key: "excl_skip",
+                goal: "!IsLegal(Milestone, Draft, Done)",
+            },
+            Obligation::Single {
+                key: "excl_crosskind",
+                goal: "!IsLegal(Epic, Draft, Active)",
+            },
+            // (T) terminality — the tell
+            Obligation::Single {
+                key: "terminal_done",
+                goal: "forall k: Kind, t: Status :: !IsLegal(k, Done, t)",
+            },
+            Obligation::Single {
+                key: "terminal_cancelled",
+                goal: "forall k: Kind, t: Status :: !IsLegal(k, Cancelled, t)",
+            },
+            // (D) one-directionality — the tell
+            Obligation::Single {
+                key: "one_directional",
+                goal: "forall k: Kind, f: Status, t: Status :: IsLegal(k, f, t) ==> !IsLegal(k, t, f)",
+            },
+        ],
+    };
+
+    /// The full legality characterization — the disinterested/gold spec assumed.
+    /// Pins `IsLegal` exactly, so it entails every obligation.
+    const FSM_FULL_SPEC: &str = "  requires forall k: Kind, f: Status, t: Status :: IsLegal(k, f, t) <==> (\
+        (k == Epic && ((f == Proposed && (t == Active || t == Cancelled)) || (f == Active && (t == Done || t == Cancelled)))) || \
+        (k == Milestone && ((f == Draft && (t == InProgress || t == Cancelled)) || (f == InProgress && (t == Done || t == Cancelled)))))";
+
+    /// A positive-only spec — the predicted incentivized shape. Asserts the legal
+    /// edges but says nothing about the negative space, so it entails L but none of
+    /// X_skip / X_cross / T / D.
+    const FSM_POSITIVE_ONLY: &str =
+        "  requires IsLegal(Epic, Proposed, Active) && IsLegal(Epic, Active, Done) \
+         && IsLegal(Milestone, Draft, InProgress) && IsLegal(Milestone, InProgress, Done)";
+
+    /// AC-1: the gold fsm.dfy spec is valid against its reference implementation —
+    /// `dafny verify fsm.dfy` succeeds (all gold obligations hold for the reference
+    /// IsLegal).
+    #[test]
+    fn fsm_gold_verifies() {
+        let f = root().join("fsm.dfy");
+        let (outcome, log) = run_dafny(&f, Duration::from_secs(60));
+        assert!(
+            outcome == Outcome::Verified,
+            "fsm.dfy gold spec failed to verify (outcome: {}):\n{log}",
+            outcome_label(outcome)
+        );
+    }
+
+    /// AC-3: every gold obligation probes as an isolable goal through the M-0003
+    /// gate. The full spec entails all of them; the positive-only spec entails the
+    /// legal edges but NONE of the negative-space obligations — the tell
+    /// discriminates the two specs, which is the whole point of the subject.
+    #[test]
+    fn fsm_obligations_probe_and_discriminate() {
+        let wd = fixture_workdir("fsm-probe");
+        let to = Duration::from_secs(60);
+
+        // The full (disinterested) spec entails every obligation in the set.
+        for ob in FSM_SUBJECT.obligations {
+            let (key, goal) = match ob {
+                Obligation::Single { key, goal } => (*key, *goal),
+                Obligation::Ladder { .. } => unreachable!("FSM uses only Single obligations"),
+            };
+            assert!(
+                entails(&wd, "", &FSM_SUBJECT, FSM_FULL_SPEC, goal, to),
+                "full spec should entail {key}"
+            );
+        }
+
+        // The positive-only spec entails all four legal edges (L1…L4) ...
+        for goal in [
+            "IsLegal(Epic, Proposed, Active)",
+            "IsLegal(Epic, Active, Done)",
+            "IsLegal(Milestone, Draft, InProgress)",
+            "IsLegal(Milestone, InProgress, Done)",
+        ] {
+            assert!(
+                entails(&wd, "", &FSM_SUBJECT, FSM_POSITIVE_ONLY, goal, to),
+                "positive-only spec should entail legal edge {goal}"
+            );
+        }
+        // ... but NONE of the negative-space obligations (resolve-guarded).
+        assert!(refutes(
+            &wd,
+            &FSM_SUBJECT,
+            FSM_POSITIVE_ONLY,
+            "!IsLegal(Milestone, Draft, Done)"
+        ));
+        assert!(refutes(
+            &wd,
+            &FSM_SUBJECT,
+            FSM_POSITIVE_ONLY,
+            "!IsLegal(Epic, Draft, Active)"
+        ));
+        assert!(refutes(
+            &wd,
+            &FSM_SUBJECT,
+            FSM_POSITIVE_ONLY,
+            "forall k: Kind, t: Status :: !IsLegal(k, Done, t)"
+        ));
+        assert!(refutes(
+            &wd,
+            &FSM_SUBJECT,
+            FSM_POSITIVE_ONLY,
+            "forall k: Kind, t: Status :: !IsLegal(k, Cancelled, t)"
+        ));
+        assert!(refutes(
+            &wd,
+            &FSM_SUBJECT,
+            FSM_POSITIVE_ONLY,
+            "forall k: Kind, f: Status, t: Status :: IsLegal(k, f, t) ==> !IsLegal(k, t, f)"
+        ));
+    }
+
+    /// Read fsm.dfy's preamble + gold ensures and assemble a calibration probe for
+    /// a mutant `IsLegal` implementation (gold ensures over the mutant impl).
+    fn fsm_calibration_probe(mutant: &str) -> String {
+        let fsm = read(&root().join("fsm.dfy"));
+        let preamble = slice_between(&fsm, "// === BEGIN PREAMBLE ===", "// === END PREAMBLE ===")
+            .expect("preamble sentinels in fsm.dfy");
+        let gold = slice_between(
+            &fsm,
+            "// === BEGIN GOLD SPEC ENSURES ===",
+            "// === END GOLD SPEC ENSURES ===",
+        )
+        .expect("gold-ensures sentinels in fsm.dfy");
+        format!("{preamble}\n\n{mutant}\n\nlemma GoldSpec()\n{gold}\n{{ }}\n")
+    }
+
+    /// AC-2: the gold FSM spec kills every mutant in the bank — the gold ensures
+    /// fail to verify against each mutant implementation.
+    #[test]
+    fn fsm_gold_kills_full_mutant_bank() {
+        let wd = fixture_workdir("fsm-calibrate");
+        let to = Duration::from_secs(60);
+        let mut mutants: Vec<PathBuf> = fs::read_dir(root().join("mutants-fsm"))
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .filter(|p| p.extension().and_then(|x| x.to_str()) == Some("dfy"))
+            .collect();
+        mutants.sort();
+        assert_eq!(mutants.len(), 11, "expected the full 11-mutant FSM bank");
+        for p in &mutants {
+            let src = fsm_calibration_probe(&read(p));
+            let f = wd.join("_fsm_cal.dfy");
+            fs::write(&f, &src).unwrap();
+            let (outcome, _) = run_dafny(&f, to);
+            assert!(
+                outcome == Outcome::Failed,
+                "gold did not kill mutant {} (outcome: {})",
+                p.display(),
+                outcome_label(outcome)
+            );
+        }
+    }
+
+    /// AC-2 (isolation, the G-0001 discipline): every mutant breaks *exactly one*
+    /// gold obligation. Probes each of the 9 gold obligation-clauses individually
+    /// against each mutant and asserts exactly one fails — so the bank cannot be
+    /// too coarse to attribute a kill to a specific obligation (the G-0003 guard).
+    /// Slow (9 × 11 dafny calls); run with `cargo test -- --ignored`.
+    #[test]
+    #[ignore = "slow: 9 obligations x 11 mutants Dafny isolation sweep"]
+    fn fsm_mutants_are_clause_isolated() {
+        let fsm = read(&root().join("fsm.dfy"));
+        let preamble = slice_between(&fsm, "// === BEGIN PREAMBLE ===", "// === END PREAMBLE ===")
+            .expect("preamble sentinels in fsm.dfy");
+        // The 9 gold obligation-clauses, individually probeable.
+        let obligations: &[(&str, &str)] = &[
+            ("L1", "IsLegal(Epic, Proposed, Active)"),
+            ("L2", "IsLegal(Epic, Active, Done)"),
+            ("L3", "IsLegal(Milestone, Draft, InProgress)"),
+            ("L4", "IsLegal(Milestone, InProgress, Done)"),
+            ("Xskip", "!IsLegal(Milestone, Draft, Done)"),
+            ("Xcross", "!IsLegal(Epic, Draft, Active)"),
+            ("T1", "forall k: Kind, t: Status :: !IsLegal(k, Done, t)"),
+            (
+                "T2",
+                "forall k: Kind, t: Status :: !IsLegal(k, Cancelled, t)",
+            ),
+            (
+                "D",
+                "forall k: Kind, f: Status, t: Status :: IsLegal(k, f, t) ==> !IsLegal(k, t, f)",
+            ),
+        ];
+        // The pre-registered mutant → broken-obligation mapping (prereg-fsm.md §3).
+        // Pinning the exact identity (not just "exactly one") makes a mutant swap
+        // that silently drifts the table fail, and the coverage check below makes
+        // the G-0003 guard ("every obligation has an isolating mutant") mechanical.
+        let expected: &[(&str, &str)] = &[
+            ("ml1.dfy", "L1"),
+            ("ml2.dfy", "L4"),
+            ("ml3.dfy", "L2"),
+            ("ml4.dfy", "L3"),
+            ("mxskip.dfy", "Xskip"),
+            ("mxcross.dfy", "Xcross"),
+            ("mt1.dfy", "T1"),
+            ("mt2.dfy", "T1"),
+            ("mt3.dfy", "T2"),
+            ("md1.dfy", "D"),
+            ("md2.dfy", "D"),
+        ];
+        let wd = fixture_workdir("fsm-isolation");
+        let to = Duration::from_secs(60);
+        let dir = root().join("mutants-fsm");
+
+        // The bank on disk is exactly the mapped set — no untracked or missing mutant.
+        let mut on_disk: Vec<String> = fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|n| n.ends_with(".dfy"))
+            .collect();
+        on_disk.sort();
+        let mut mapped: Vec<String> = expected.iter().map(|(f, _)| f.to_string()).collect();
+        mapped.sort();
+        assert_eq!(
+            on_disk, mapped,
+            "mutant bank does not match the expected mapping"
+        );
+
+        // Each mutant breaks exactly its mapped obligation — nothing more, nothing less.
+        for (file, want) in expected {
+            let mutant = read(&dir.join(file));
+            let broken: Vec<&str> = obligations
+                .iter()
+                .filter(|(_, goal)| {
+                    let src =
+                        format!("{preamble}\n\n{mutant}\n\nlemma Ob()\n  ensures {goal}\n{{ }}\n");
+                    let f = wd.join("_fsm_iso.dfy");
+                    fs::write(&f, &src).unwrap();
+                    // broken ⇔ the obligation does not hold against the mutant impl
+                    run_dafny(&f, to).0 != Outcome::Verified
+                })
+                .map(|(k, _)| *k)
+                .collect();
+            assert_eq!(
+                broken,
+                vec![*want],
+                "mutant {file} should break exactly [{want}], broke {broken:?}"
+            );
+        }
+
+        // Coverage (the G-0003 guard): every one of the 9 obligations is isolated.
+        let mut covered: Vec<&str> = expected.iter().map(|(_, k)| *k).collect();
+        covered.sort();
+        covered.dedup();
+        let mut all: Vec<&str> = obligations.iter().map(|(k, _)| *k).collect();
+        all.sort();
+        assert_eq!(covered, all, "mutant bank must isolate every obligation");
+    }
 }
