@@ -13,6 +13,9 @@ acs:
     - id: AC-2
       title: Prereg and combination-rule SHAs verified as git ancestors of the run commit
       status: open
+    - id: AC-3
+      title: verdict() and combine() yield a recorded go/no-go Decision
+      status: open
 ---
 ## Goal
 
@@ -102,4 +105,6 @@ re-validation duty and feeds any successor loom-light epic.
 ### AC-1 — Both arms run on both subjects, scored by kill-rate and structural strength
 
 ### AC-2 — Prereg and combination-rule SHAs verified as git ancestors of the run commit
+
+### AC-3 — verdict() and combine() yield a recorded go/no-go Decision
 
