@@ -34,22 +34,8 @@ re-validation duty and feeds any successor loom-light epic.
 
 ## Acceptance criteria
 
-<!-- Candidate ACs; formalized via `aiwf add ac` at start-milestone. -->
-
-- The two-arm experiment is run on both subjects and recorded against **both** the
-  mutation kill-rate **and** the generalized structural strength measure;
-  inconclusive (timeout) verdicts are reported separately and **never** folded into
-  "survived", and the per-arm **validity (over-claim) rate** is reported alongside,
-  so the over-claim failure mode (D-0001's two-gate requirement) is surfaced rather
-  than silently dropped.
-- Each subject's recorded run result **names its pre-registration commit SHA, and
-  that SHA is verified to be a git ancestor of the run commit**; the **M-0007
-  combination-rule pre-registration commit is likewise verified to be a git ancestor
-  of the run commit** (the mechanical pre-registration-precedes-run guard, covering
-  both the per-subject and the cross-subject pre-registrations).
-- Each subject's result is mapped to its pre-registered edges (reproduced /
-  not-reproduced / inconclusive), and the **M-0007 subject-combination rule** is
-  applied to yield a single epic-level go/no-go, recorded as a decision.
+The three ACs are tracked in frontmatter `acs[]`; each criterion and its evidence is
+detailed under its `### AC-N` section below.
 
 ## Constraints
 
@@ -104,7 +90,42 @@ re-validation duty and feeds any successor loom-light epic.
 
 ### AC-1 — Both arms run on both subjects, scored by kill-rate and structural strength
 
+The two-arm (disinterested / incentivized) experiment runs on **both** subjects (FSM,
+prosey) through the subject-parameterized harness, and each `(subject, arm)` result is
+recorded against **both** measures: the **mutation kill-rate** (against the subject's
+committed mutant bank) and the **generalized structural-strength** measure (M-0003's
+gate over the subject's obligation set). Inconclusive (Z3-timeout) probes are reported
+as their own category and **never** folded into "survived" / "not-entailed" (G1). The
+per-arm **validity (over-claim) rate** — the fraction of specs the reference impl
+actually verifies against — is reported alongside, so D-0001's two-gate requirement (a
+weak spec can pass by over-claiming) is surfaced, not silently dropped.
+
+**Evidence:** committed result artifacts under `experiments/loom-ultralight/results/`
+for both subjects; calibration green dry before the paid run.
+
 ### AC-2 — Prereg and combination-rule SHAs verified as git ancestors of the run commit
 
+Each subject's recorded run result **names its pre-registration commit SHA**
+(`prereg-fsm.md` / `prereg-prosey.md`), and a mechanical check verifies that SHA is a
+**git ancestor** of the run commit; the **M-0007 combination-rule prereg**
+(`prereg-combination.md`) SHA is **likewise verified** as an ancestor. This is the
+pre-registration-precedes-run guard — covering both the per-subject and the
+cross-subject pre-registrations — so no result can have been read before its prediction
+was committed (the M-0002 integrity lesson, enforced from git, not asserted in prose).
+
+**Evidence:** the recorded result names the three SHAs; a `git merge-base
+--is-ancestor` check (committed in the harness or a script) passes for each.
+
 ### AC-3 — verdict() and combine() yield a recorded go/no-go Decision
+
+A mechanical **`verdict()`** maps each subject's recorded measures to its
+pre-registered edge — **reproduced / not-reproduced / inconclusive** — as a **total
+function** of the observation, matching that subject's §6 verdict map exactly
+(thresholds V, Δ⁺, Δ⁰, I), pinned by an oracle test the way `combine()` is (not a hand
+computation after the run). The two verdicts feed **`combine()`** (M-0007), yielding a
+single epic-level **PROCEED / NO-GO / RERUN-OR-EXPAND**, recorded as a **`Decision`**
+entity via `aiwfx-record-decision`, relating to E-0002 and discharging D-0001.
+
+**Evidence:** `verdict()` + its oracle test green; the recorded `Decision` entity names
+the two per-subject verdicts and the combined decision.
 
