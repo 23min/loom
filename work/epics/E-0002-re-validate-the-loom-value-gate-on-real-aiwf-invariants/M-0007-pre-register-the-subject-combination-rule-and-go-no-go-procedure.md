@@ -11,6 +11,9 @@ acs:
     - id: AC-1
       title: Combination-rule pre-registration artifact is committed
       status: open
+    - id: AC-2
+      title: The rule is total and falsifiable over every verdict pair
+      status: open
 ---
 ## Goal
 
@@ -92,4 +95,6 @@ pre-registrations get.
 - (none)
 
 ### AC-1 — Combination-rule pre-registration artifact is committed
+
+### AC-2 — The rule is total and falsifiable over every verdict pair
 
