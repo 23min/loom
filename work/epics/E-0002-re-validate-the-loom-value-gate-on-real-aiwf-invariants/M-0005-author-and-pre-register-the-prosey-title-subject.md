@@ -10,6 +10,9 @@ acs:
     - id: AC-1
       title: Gold prosey spec and reference implementation verify
       status: open
+    - id: AC-2
+      title: Clause-isolated mutant bank that the gold spec kills
+      status: open
 ---
 ## Goal
 
@@ -98,4 +101,6 @@ M-0003's generalized gate. (aiwf source at `/tmp/aiwf-src`.)
 - (none)
 
 ### AC-1 — Gold prosey spec and reference implementation verify
+
+### AC-2 — Clause-isolated mutant bank that the gold spec kills
 
