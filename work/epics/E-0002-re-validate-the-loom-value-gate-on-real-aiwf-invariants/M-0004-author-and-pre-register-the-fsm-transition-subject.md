@@ -6,6 +6,10 @@ parent: E-0002
 depends_on:
     - M-0003
 tdd: advisory
+acs:
+    - id: AC-1
+      title: Gold FSM spec + reference impl verify
+      status: open
 ---
 ## Goal
 
@@ -95,3 +99,6 @@ single-input goals before the pre-registration is finalized. (aiwf source cloned
 ## Reviewer notes
 
 - (none)
+
+### AC-1 — Gold FSM spec + reference impl verify
+
