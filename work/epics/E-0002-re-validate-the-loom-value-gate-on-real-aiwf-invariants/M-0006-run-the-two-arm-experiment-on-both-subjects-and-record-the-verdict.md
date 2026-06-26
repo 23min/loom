@@ -18,8 +18,9 @@ full loom-light pipeline.
 
 The terminal milestone. Both subjects (M-0004 FSM, M-0005 prosey) are authored,
 calibrated, and pre-registered; M-0003's generalized gate measures structural
-strength. This milestone executes the paid runs and records the verdict that
-discharges D-0001's re-validation duty and feeds any successor loom-light epic.
+strength; and M-0007 has committed the combination rule before any run. This
+milestone executes the paid runs and records the verdict that discharges D-0001's
+re-validation duty and feeds any successor loom-light epic.
 
 ## Acceptance criteria
 
@@ -28,13 +29,17 @@ discharges D-0001's re-validation duty and feeds any successor loom-light epic.
 - The two-arm experiment is run on both subjects and recorded against **both** the
   mutation kill-rate **and** the generalized structural strength measure;
   inconclusive (timeout) verdicts are reported separately and **never** folded into
-  "survived".
+  "survived", and the per-arm **validity (over-claim) rate** is reported alongside,
+  so the over-claim failure mode (D-0001's two-gate requirement) is surfaced rather
+  than silently dropped.
 - Each subject's recorded run result **names its pre-registration commit SHA, and
-  that SHA is verified to be a git ancestor of the run commit** (the mechanical
-  pre-registration-precedes-run guard).
+  that SHA is verified to be a git ancestor of the run commit**; the **M-0007
+  combination-rule pre-registration commit is likewise verified to be a git ancestor
+  of the run commit** (the mechanical pre-registration-precedes-run guard, covering
+  both the per-subject and the cross-subject pre-registrations).
 - Each subject's result is mapped to its pre-registered edges (reproduced /
-  not-reproduced / inconclusive), and the **pre-registered subject-combination
-  rule** is applied to yield a single epic-level go/no-go, recorded as a decision.
+  not-reproduced / inconclusive), and the **M-0007 subject-combination rule** is
+  applied to yield a single epic-level go/no-go, recorded as a decision.
 
 ## Constraints
 
@@ -62,7 +67,8 @@ discharges D-0001's re-validation duty and feeds any successor loom-light epic.
 
 ## Dependencies
 
-- M-0004 and M-0005 (both subjects authored, calibrated, and pre-registered).
+- M-0007 (the committed combination rule), which transitively requires M-0004 and
+  M-0005 (both subjects authored, calibrated, and pre-registered).
 
 ## References
 
