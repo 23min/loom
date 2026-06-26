@@ -12,7 +12,7 @@ acs:
       status: met
     - id: AC-2
       title: 'Mutant bank: gold kills full bank, isolating mutant per tell'
-      status: open
+      status: met
     - id: AC-3
       title: Each obligation probes as isolable single-input goal via M-0003 gate
       status: open
