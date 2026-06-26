@@ -10,6 +10,9 @@ acs:
     - id: AC-1
       title: Both arms run on both subjects, scored by kill-rate and structural strength
       status: open
+    - id: AC-2
+      title: Prereg and combination-rule SHAs verified as git ancestors of the run commit
+      status: open
 ---
 ## Goal
 
@@ -97,4 +100,6 @@ re-validation duty and feeds any successor loom-light epic.
 - (none)
 
 ### AC-1 — Both arms run on both subjects, scored by kill-rate and structural strength
+
+### AC-2 — Prereg and combination-rule SHAs verified as git ancestors of the run commit
 
