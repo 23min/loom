@@ -10,7 +10,7 @@ tdd: advisory
 acs:
     - id: AC-1
       title: Combination-rule pre-registration artifact is committed
-      status: open
+      status: met
     - id: AC-2
       title: The rule is total and falsifiable over every verdict pair
       status: open
