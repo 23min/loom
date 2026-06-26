@@ -1,0 +1,69 @@
+Looking at this problem, I need to:
+
+1. **Implement `Canonicalize`**: Rewrite the id with width set to `max(PAD, NumDigits(value))`, keeping kind and value unchanged.
+
+2. **Write `ensures` clauses for `Spec`** that capture the contract precisely and completely.
+
+Let me analyze the contract:
+- Kind and numeric value never change
+- Width becomes at least 4 digits
+- Already-canonical ids are unchanged (idempotent)
+- The result must be wellformed
+- Canonicalizing twice gives the same result
+
+Here's my solution:
+
+## Part (a): Implementation
+
+```dafny
+function Canonicalize(x: Id): Id {
+  Id(x.kind, x.value, if x.width >= PAD then x.width else PAD)
+}
+```
+
+Wait, let me reconsider. The spec says "minimum of 4 digits" - so if the value needs fewer than 4 digits, pad to 4. If it needs 4 or more, keep it as is.
+
+```dafny
+function Canonicalize(x: Id): Id {
+  var minWidth := if NumDigits(x.value) < PAD then PAD else NumDigits(x.value);
+  Id(x.kind, x.value, minWidth)
+}
+```
+
+Or more simply:
+
+```dafny
+function Canonicalize(x: Id): Id {
+  Id(x.kind, x.value, if PAD > NumDigits(x.value) then PAD else NumDigits(x.value))
+}
+```
+
+## Part (b): Ensures clauses for Spec
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures var c := Canonicalize(x); 
+          c.kind == x.kind
+  ensures var c := Canonicalize(x); 
+          c.value == x.value
+  ensures var c := Canonicalize(x); 
+          c.width >= PAD
+  ensures var c := Canonicalize(x); 
+          c.width >= NumDigits(c.value)
+  ensures var c := Canonicalize(x); 
+          Wellformed(c)
+  ensures var c := Canonicalize(x); 
+          Canonicalize(c) == c
+  ensures x.width >= PAD && x.width >= NumDigits(x.value) ==> Canonicalize(x) == x
+{ }
+```
+
+These ensures clauses capture:
+1. Kind is preserved
+2. Value is preserved
+3. Width is at least PAD (4 digits minimum)
+4. Width is sufficient for the value (wellformedness of width)
+5. Result is wellformed
+6. Canonicalization is idempotent
+7. Already-canonical ids are unchanged

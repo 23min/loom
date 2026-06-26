@@ -1,0 +1,43 @@
+Looking at the contract:
+
+1. **Kind never changes.**
+2. **Value never changes.**
+3. **Width becomes** `max(width, PAD)` — i.e., padded to a minimum of 4 digits, but ids already at ≥4 digits are unchanged.
+4. **No-op on already-canonical ids** (follows from the width rule).
+5. The result must remain wellformed (it can hold its value).
+
+The width of the result is `max(x.width, PAD)`. Since `Wellformed(x)` gives `x.width >= NumDigits(x.value)`, the result width also holds the value.
+
+Here is the implementation and the lemma's `ensures` clauses.
+
+### (a) Implementation
+
+```dafny
+function Canonicalize(x: Id): Id
+{
+  Id(x.kind, x.value, if x.width < PAD then PAD else x.width)
+}
+```
+
+### (b) Lemma specification
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures Canonicalize(x).kind == x.kind          // kind never changes
+  ensures Canonicalize(x).value == x.value         // numeric value never changes
+  ensures Canonicalize(x).width == (if x.width < PAD then PAD else x.width)
+                                                   // padded to a minimum of PAD digits
+  ensures Canonicalize(x).width >= PAD             // result meets the minimum width
+  ensures Canonicalize(x).width >= x.width         // width is never reduced
+  ensures Wellformed(Canonicalize(x))              // result can still hold its value
+  ensures Wellformed(x) && x.width >= PAD ==> Canonicalize(x) == x  // no-op when already canonical
+{ }
+```
+
+### Notes on completeness
+
+- `kind` and `value` clauses pin down that the entity referred to is unchanged.
+- The `width == (if x.width < PAD then PAD else x.width)` clause is the **exact** characterization of the new width: it is `max(x.width, PAD)`. This single clause already implies `width >= PAD`, `width >= x.width`, and the no-op property, but they are stated explicitly for clarity/audit.
+- The no-op clause captures "an id already at 4 or more digits is returned unchanged" and "canonicalizing an already-canonical id is a no-op." Combined with the `width` equality, canonical-form is idempotent: applying `Canonicalize` twice gives the same result, since the output already satisfies `width >= PAD`.
+- `Wellformed(Canonicalize(x))` ensures the produced id is a valid one (width can hold the value), which follows from `Wellformed(x)` and the width only increasing.

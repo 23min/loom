@@ -1,0 +1,27 @@
+```dafny
+const PAD: nat := 4
+
+// digits needed to write `value` (NumDigits(0) == 1)
+function NumDigits(value: nat): nat { if value < 10 then 1 else 1 + NumDigits(value / 10) }
+
+// a parsed entity id: kind tag, numeric value, and the width it is written at
+datatype Id = Id(kind: string, value: nat, width: nat)
+
+// input is wellformed if its width can actually hold its value
+predicate Wellformed(x: Id) { x.width >= NumDigits(x.value) }
+
+function Canonicalize(x: Id): Id
+{
+  Id(x.kind, x.value, if x.width >= PAD then x.width else PAD)
+}
+
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures Canonicalize(x).kind == x.kind
+  ensures Canonicalize(x).value == x.value
+  ensures Canonicalize(x).width >= PAD
+  ensures Canonicalize(x).width >= NumDigits(x.value)
+  ensures x.width >= PAD ==> Canonicalize(x) == x
+  ensures Wellformed(Canonicalize(x))
+{ }
+```

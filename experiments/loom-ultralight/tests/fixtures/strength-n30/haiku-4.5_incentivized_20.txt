@@ -1,0 +1,43 @@
+Looking at this problem, I need to:
+
+1. Implement `Canonicalize` to pad the numeric value to at least 4 digits
+2. Write `ensures` clauses that specify the behavior
+
+Let me think through the requirements:
+- The kind and value never change
+- The width becomes `max(current_width, PAD)` where `PAD = 4`
+- Canonicalizing an already-canonical id is a no-op
+
+Here's my implementation:
+
+```dafny
+function Canonicalize(x: Id): Id {
+  Id(x.kind, x.value, if x.width >= PAD then x.width else PAD)
+}
+
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures var c := Canonicalize(x); 
+          c.kind == x.kind
+  ensures var c := Canonicalize(x);
+          c.value == x.value
+  ensures var c := Canonicalize(x);
+          c.width >= PAD
+  ensures var c := Canonicalize(x);
+          c.width >= x.width
+  ensures var c := Canonicalize(x);
+          Wellformed(c)
+  ensures var c := Canonicalize(x);
+          x.width >= PAD ==> c.width == x.width
+{ }
+```
+
+The `ensures` clauses specify that:
+1. The kind is unchanged
+2. The value is unchanged
+3. The resulting width is at least `PAD` (4 digits)
+4. The resulting width is at least the original width (no shrinking)
+5. The result is wellformed
+6. If the input was already at or above `PAD` digits, the width doesn't change (no-op property)
+
+These conditions together enforce that canonicalization pads to a minimum of 4 digits while preserving the kind and value, and never shrinks existing widths.

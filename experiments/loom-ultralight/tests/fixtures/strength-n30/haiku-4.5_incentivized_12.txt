@@ -1,0 +1,40 @@
+Looking at this problem, I need to:
+
+1. **Implement `Canonicalize`**: Rewrite the width to be `max(4, NumDigits(value))` while keeping kind and value unchanged
+2. **Specify `Spec` lemma**: Write ensures clauses that capture the canonical form properties
+
+Let me think through the key properties:
+- The kind must never change
+- The numeric value must never change
+- The width becomes at least 4, but doesn't change if already ≥ 4
+- The result is wellformed
+- Applying canonicalize twice is the same as applying it once (idempotent)
+
+```dafny
+function Canonicalize(x: Id): Id {
+  var canonical_width := if PAD > NumDigits(x.value) then PAD else NumDigits(x.value);
+  Id(x.kind, x.value, canonical_width)
+}
+
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures var c := Canonicalize(x);
+    c.kind == x.kind &&
+    c.value == x.value &&
+    c.width >= PAD &&
+    c.width >= NumDigits(c.value) &&
+    Wellformed(c) &&
+    Canonicalize(c) == c
+{
+}
+```
+
+The ensures clauses specify that:
+1. **Kind preservation**: `c.kind == x.kind` - the kind never changes
+2. **Value preservation**: `c.value == x.value` - the numeric value never changes
+3. **Minimum width**: `c.width >= PAD` - the width is at least 4 (the minimum)
+4. **Sufficient width**: `c.width >= NumDigits(c.value)` - the width can hold the value
+5. **Wellformedness**: `Wellformed(c)` - the result is wellformed
+6. **Idempotence**: `Canonicalize(c) == c` - canonicalizing an already-canonical id is a no-op
+
+These properties directly encode the specification given in the problem and are sufficient for the implementation to provably satisfy them.

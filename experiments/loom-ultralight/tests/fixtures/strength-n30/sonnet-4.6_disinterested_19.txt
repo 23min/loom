@@ -1,0 +1,56 @@
+I'll analyze the contract carefully:
+
+1. Canonicalization sets width to `max(4, NumDigits(value))` — i.e., minimum 4 digits, but if the value already needs more digits, keep those digits.
+2. Kind and value never change.
+3. If already canonical (width >= 4 and width == NumDigits(value) when NumDigits(value) >= 4, or width == 4 when NumDigits(value) < 4), it's a no-op.
+
+Wait, let me re-read: "the numeric value is left-zero-padded to a **minimum of 4 digits**. An id already at 4 or more digits is returned unchanged."
+
+So canonical width = `max(PAD, NumDigits(x.value))`. An id is already canonical if its width equals this canonical width.
+
+**(a) Implementation:**
+
+```dafny
+function Canonicalize(x: Id): Id {
+  var canonicalWidth := if NumDigits(x.value) >= PAD then NumDigits(x.value) else PAD;
+  Id(x.kind, x.value, canonicalWidth)
+}
+```
+
+**(b) Lemma with ensures clauses:**
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures Canonicalize(x).kind == x.kind
+  ensures Canonicalize(x).value == x.value
+  ensures Canonicalize(x).width == (if NumDigits(x.value) >= PAD then NumDigits(x.value) else PAD)
+  ensures Canonicalize(x).width >= PAD
+  ensures Canonicalize(x).width >= NumDigits(x.value)
+  ensures Wellformed(Canonicalize(x))
+  ensures Canonicalize(Canonicalize(x)) == Canonicalize(x)
+  ensures x.width >= PAD ==> Canonicalize(x) == x
+{ }
+```
+
+Let me verify the idempotency clause and the "already canonical is no-op" clause carefully.
+
+"An id already at 4 or more digits is returned unchanged" — this means if `x.width >= 4`, then `Canonicalize(x) == x`. But wait, that can't be right if width is, say, 5 but NumDigits(value) is 3 — then canonical should be 4, not 5. 
+
+Re-reading: "An id already at 4 or more digits is returned unchanged" — I think this means if the id's width is already at the canonical width (i.e., `x.width == max(4, NumDigits(x.value))`), it's a no-op. The sentence is describing the no-op condition in terms of "already being canonical."
+
+Actually, I think the simplest reading: canonical width = `max(4, NumDigits(value))`, and the no-op condition is `x.width == max(4, NumDigits(x.value))`.
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures Canonicalize(x).kind == x.kind
+  ensures Canonicalize(x).value == x.value
+  ensures Canonicalize(x).width == (if NumDigits(x.value) >= PAD then NumDigits(x.value) else PAD)
+  ensures Canonicalize(x).width >= PAD
+  ensures Canonicalize(x).width >= NumDigits(x.value)
+  ensures Wellformed(Canonicalize(x))
+  ensures Canonicalize(Canonicalize(x)) == Canonicalize(x)
+  ensures x.width == (if NumDigits(x.value) >= PAD then NumDigits(x.value) else PAD) ==> Canonicalize(x) == x
+{ }
+```

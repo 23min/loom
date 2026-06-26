@@ -1,0 +1,55 @@
+Looking at this problem, I need to capture the canonicalization contract precisely.
+
+## Analysis
+
+The behavior:
+- The numeric value is left-zero-padded to a **minimum of 4 digits**.
+- If already at 4+ digits, returned unchanged.
+- Kind and value **never** change.
+- Idempotent (no-op on already-canonical).
+
+The resulting width should be `max(PAD, NumDigits(value))` — but I must be careful: the result's width depends on the *value's* required digits, not the input width. Since `Wellformed(x)` guarantees `x.width >= NumDigits(x.value)`, an input with `width >= 4` keeps its width, but an input with `width >= 4` that is wellformed has `NumDigits(value) <= width`. 
+
+Wait — if input width is 5 but value needs only 2 digits, is it "already at 4 or more digits"? Yes, width 5 ≥ 4, so returned **unchanged** (width stays 5). So the result width is **not** simply `max(PAD, NumDigits(value))`; it depends on input width.
+
+The rule: if `x.width >= PAD`, width unchanged; else width becomes `PAD` (since padding to minimum 4, and value fits in 4 because input was wellformed with width < 4 means NumDigits ≤ width < 4).
+
+## (a) Implementation
+
+```dafny
+function Canonicalize(x: Id): Id
+{
+  if x.width >= PAD then x
+  else Id(x.kind, x.value, PAD)
+}
+```
+
+## (b) Lemma ensures clauses
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures Canonicalize(x).kind == x.kind          // kind never changes
+  ensures Canonicalize(x).value == x.value        // value never changes
+  ensures Wellformed(Canonicalize(x))             // result can hold its value
+  ensures Canonicalize(x).width >= PAD            // padded to minimum 4 digits
+  // result width: unchanged if already >= PAD, otherwise exactly PAD
+  ensures Canonicalize(x).width == (if x.width >= PAD then x.width else PAD)
+  // idempotence / no-op on already-canonical ids
+  ensures Wellformed(Canonicalize(x)) ==> Canonicalize(Canonicalize(x)) == Canonicalize(x)
+  ensures x.width >= PAD ==> Canonicalize(x) == x
+{ }
+```
+
+### Why these are complete
+
+- **`kind == x.kind` and `value == x.value`**: enforce that canonicalization never changes *which entity* the id refers to.
+- **`width >= PAD`**: enforces the "minimum of 4 digits" guarantee.
+- **`width == (if x.width >= PAD then x.width else PAD)`**: this is the key precision clause. It pins down the exact resulting width in both cases:
+  - already 4+ digits ⇒ returned unchanged (width preserved),
+  - fewer than 4 ⇒ padded up to exactly 4.
+  This rules out spurious behavior like always forcing width to `NumDigits(value)` or truncating an already-wide id.
+- **`Wellformed(Canonicalize(x))`**: the output is itself a valid id whose width holds its value (so it can be re-canonicalized).
+- **`x.width >= PAD ==> Canonicalize(x) == x`**: the explicit no-op / idempotence statement for already-canonical ids. Combined with the width clause, applying `Canonicalize` twice is a no-op since the result always has `width >= PAD`.
+
+Note the width clause alone (with kind/value clauses) fully determines the result, since an `Id` is just `(kind, value, width)`; the remaining clauses are derivable consequences stated explicitly to make the contract auditable.

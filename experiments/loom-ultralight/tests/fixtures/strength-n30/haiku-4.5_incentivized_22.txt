@@ -1,0 +1,73 @@
+Looking at this problem, I need to:
+
+1. Implement `Canonicalize` that pads the numeric value to at least 4 digits
+2. Write `ensures` clauses that capture the canonicalization behavior
+
+Let me analyze the requirements:
+- The kind and value never change
+- The width becomes `max(PAD, NumDigits(value))` = `max(4, NumDigits(value))`
+- An already-canonical id is unchanged
+- The result must be wellformed
+
+Here's my solution:
+
+```dafny
+function Canonicalize(x: Id): Id
+  requires Wellformed(x)
+{
+  Id(x.kind, x.value, if x.width >= PAD then x.width else PAD)
+}
+```
+
+Wait, let me reconsider. The spec says "minimum of 4 digits" and "An id already at 4 or more digits is returned unchanged". This means:
+- If width < 4, pad to 4
+- If width >= 4, keep it unchanged
+
+So the new width should be `max(4, x.width)`.
+
+Actually, re-reading more carefully: "the numeric value is left-zero-padded to a **minimum of 4 digits**" and "An id already at 4 or more digits is returned unchanged (4 is a minimum, not a maximum)."
+
+This means the width should be at least 4, but if the current width is already >= 4, we don't change it. However, we also need the width to be at least `NumDigits(value)` to be wellformed.
+
+So: `new_width = max(PAD, x.width)` ensures we pad to at least 4 if below 4, and keep it if already at 4 or more.
+
+```dafny
+function Canonicalize(x: Id): Id
+  requires Wellformed(x)
+{
+  Id(x.kind, x.value, if x.width >= PAD then x.width else PAD)
+}
+
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures var c := Canonicalize(x); 
+    c.kind == x.kind &&
+    c.value == x.value &&
+    c.width >= PAD &&
+    c.width >= NumDigits(c.value) &&
+    (x.width >= PAD ==> c.width == x.width) &&
+    (x.width < PAD ==> c.width == PAD) &&
+    Wellformed(c) &&
+    (Wellformed(x) && x.width >= PAD ==> Canonicalize(x) == x)
+{ }
+```
+
+Let me simplify and focus on the essential properties:
+
+```dafny
+function Canonicalize(x: Id): Id
+  requires Wellformed(x)
+{
+  Id(x.kind, x.value, if x.width >= PAD then x.width else PAD)
+}
+
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures var c := Canonicalize(x);
+    c.kind == x.kind &&
+    c.value == x.value &&
+    c.width >= PAD &&
+    Wellformed(c) &&
+    (x.width >= PAD ==> c == x)
+{ }
+```

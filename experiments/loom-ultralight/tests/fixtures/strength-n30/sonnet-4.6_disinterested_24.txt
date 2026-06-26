@@ -1,0 +1,68 @@
+I'll analyze the contract carefully:
+
+1. Canonicalization sets width to `max(4, NumDigits(value))` — padding to minimum 4 digits, but never reducing below what's needed to write the value
+2. Kind and value never change
+3. Already-canonical ids are unchanged (idempotent)
+
+**(a) Implementation:**
+
+```dafny
+function Canonicalize(x: Id): Id {
+  Id(x.kind, x.value, if x.width >= PAD then x.width else PAD)
+}
+```
+
+Wait — re-reading: "An id already at 4 or more digits is returned unchanged" and "the numeric value is left-zero-padded to a minimum of 4 digits." So if width >= 4, return unchanged. If width < 4, pad to 4.
+
+```dafny
+function Canonicalize(x: Id): Id {
+  if x.width >= PAD then x
+  else Id(x.kind, x.value, PAD)
+}
+```
+
+**(b) Lemma with ensures clauses:**
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures Canonicalize(x).kind == x.kind
+  ensures Canonicalize(x).value == x.value
+  ensures Canonicalize(x).width >= PAD
+  ensures Canonicalize(x).width >= x.width
+  ensures Canonicalize(x).width == if x.width >= PAD then x.width else PAD
+  ensures Wellformed(Canonicalize(x))
+  ensures Canonicalize(Canonicalize(x)) == Canonicalize(x)
+{ }
+```
+
+Let me verify each clause:
+- Kind preserved ✓
+- Value preserved ✓  
+- Width ≥ 4 (minimum 4 digits) ✓
+- Width ≥ original width (never reduces display width... actually wait: "An id already at 4 or more digits is returned unchanged" means if width ≥ 4, keep it; otherwise set to 4. So width only increases or stays same when < 4, stays same when ≥ 4 — so `width >= x.width` only holds when x.width < 4 → result is 4 ≥ x.width. When x.width ≥ 4, result width = x.width. So yes `Canonicalize(x).width >= x.width` holds in all cases) ✓
+- Exact characterization of the new width ✓
+- Result is wellformed (width can hold value) ✓
+- Idempotent: canonicalizing again is a no-op ✓
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures Canonicalize(x).kind == x.kind
+  ensures Canonicalize(x).value == x.value
+  ensures Canonicalize(x).width == if x.width >= PAD then x.width else PAD
+  ensures Canonicalize(x).width >= PAD
+  ensures Canonicalize(x).width >= x.width
+  ensures Wellformed(Canonicalize(x))
+  ensures Canonicalize(Canonicalize(x)) == Canonicalize(x)
+{ }
+```
+
+And the implementation:
+
+```dafny
+function Canonicalize(x: Id): Id {
+  if x.width >= PAD then x
+  else Id(x.kind, x.value, PAD)
+}
+```

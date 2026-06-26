@@ -1,0 +1,41 @@
+Looking at this problem, I need to:
+
+1. Implement `Canonicalize` to left-zero-pad the numeric value to a minimum of 4 digits
+2. Write `ensures` clauses that specify the behavior
+
+Let me think through the requirements:
+- The kind must never change
+- The numeric value must never change
+- Only the width changes
+- The new width should be `max(4, NumDigits(value))`
+- Canonicalizing an already-canonical id is a no-op
+
+Here's my solution:
+
+```dafny
+function Canonicalize(x: Id): Id
+  requires Wellformed(x)
+{
+  Id(x.kind, x.value, if NumDigits(x.value) < PAD then PAD else NumDigits(x.value))
+}
+
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures Canonicalize(x).kind == x.kind
+  ensures Canonicalize(x).value == x.value
+  ensures Canonicalize(x).width >= PAD
+  ensures Canonicalize(x).width >= NumDigits(x.value)
+  ensures Wellformed(Canonicalize(x))
+  ensures NumDigits(x.value) >= PAD ==> Canonicalize(x).width == NumDigits(x.value)
+  ensures NumDigits(x.value) < PAD ==> Canonicalize(x).width == PAD
+  ensures Wellformed(x) && x.width >= PAD && NumDigits(x.value) <= x.width ==> 
+          (NumDigits(x.value) >= PAD ==> Canonicalize(x) == x)
+{ }
+```
+
+The key insights in the specification:
+- **Kind and value preservation**: The kind and value don't change
+- **Width constraints**: The new width is at least `PAD` (4) and at least `NumDigits(value)`
+- **Wellformedness**: The result is still wellformed
+- **Idempotence condition**: If the input is already canonical (width ≥ 4 and width equals the minimum needed), then canonicalizing returns the same id
+- **Explicit width rules**: Clarify exactly when we pad to 4 vs using the actual number of digits

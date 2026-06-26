@@ -1,0 +1,47 @@
+I'll analyze the contract carefully and provide both the implementation and the specification.
+
+## Key observations from the contract:
+
+1. **Kind never changes**: `result.kind == x.kind`
+2. **Value never changes**: `result.value == x.value`
+3. **Canonical width = max(4, NumDigits(value))**: minimum 4 digits, but if the value needs more digits, keep those
+4. **Already canonical → no-op**: if `x.width >= PAD` already, it's returned unchanged... wait, no. "An id already at 4 or more digits is returned unchanged" — but this means the *width* is set to exactly `max(4, NumDigits(x.value))`, not preserved if it's 5 and value only needs 1 digit.
+
+Re-reading: "the numeric value is left-zero-padded to a **minimum of 4 digits**" and "An id already at 4 or more digits is returned unchanged." — "at 4 or more digits" means the *canonical width* is 4 or more, so the canonical form has `width = max(PAD, NumDigits(value))`.
+
+"Canonicalizing an already-canonical id is a no-op" means if `x` is already canonical (width = max(PAD, NumDigits(x.value))), the result equals `x`.
+
+## Implementation
+
+```dafny
+function Canonicalize(x: Id): Id {
+  var canonicalWidth := if NumDigits(x.value) >= PAD then NumDigits(x.value) else PAD;
+  Id(x.kind, x.value, canonicalWidth)
+}
+```
+
+## Lemma with ensures clauses
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures Canonicalize(x).kind == x.kind
+  ensures Canonicalize(x).value == x.value
+  ensures Canonicalize(x).width == if NumDigits(x.value) >= PAD then NumDigits(x.value) else PAD
+  ensures Canonicalize(x).width >= PAD
+  ensures Canonicalize(x).width >= NumDigits(x.value)
+  ensures Wellformed(Canonicalize(x))
+  ensures Canonicalize(x).width == PAD || Canonicalize(x).width == NumDigits(x.value)
+  ensures x.width >= PAD && x.width == (if NumDigits(x.value) >= PAD then NumDigits(x.value) else PAD) ==> Canonicalize(x) == x
+  ensures Canonicalize(Canonicalize(x)) == Canonicalize(x)
+{ }
+```
+
+The most critical ensures clauses are:
+
+- **Kind/value preservation**: `.kind == x.kind`, `.value == x.value`
+- **Width is exactly `max(PAD, NumDigits(x.value))`**: the third ensures pins the width precisely
+- **Width is at least PAD**: minimum 4 digits
+- **Wellformedness preserved**: the result is wellformed
+- **Idempotence**: canonicalizing twice is the same as once (captures "canonicalizing an already-canonical id is a no-op")
+- **No-op condition**: if `x` is already at canonical width, `Canonicalize(x) == x`

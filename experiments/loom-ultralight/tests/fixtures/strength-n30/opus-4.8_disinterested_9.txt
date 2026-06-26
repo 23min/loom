@@ -1,0 +1,26 @@
+```dafny
+function Canonicalize(x: Id): Id
+{
+  Id(x.kind, x.value, if x.width >= PAD then x.width else PAD)
+}
+
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures Canonicalize(x).kind == x.kind
+  ensures Canonicalize(x).value == x.value
+  ensures Canonicalize(x).width >= PAD
+  ensures Canonicalize(x).width >= NumDigits(x.value)
+  ensures x.width >= PAD ==> Canonicalize(x).width == x.width
+  ensures x.width < PAD ==> Canonicalize(x).width == PAD
+{ }
+```
+
+**Explanation of the `ensures` clauses:**
+
+- `kind` and `value` are preserved — canonicalization never changes which entity the id refers to.
+- `width >= PAD` — the result is left-padded to a minimum of 4 digits.
+- `width >= NumDigits(x.value)` — the result is still well-formed (its width can hold its value); this follows from the others but is stated for completeness.
+- `x.width >= PAD ==> width unchanged` — ids already at 4+ digits are returned unchanged (and this makes canonicalizing a canonical id a no-op).
+- `x.width < PAD ==> width == PAD` — narrower ids are widened exactly to PAD, not more.
+
+The last two clauses together pin down the result width exactly as a function of the input, leaving no ambiguity.

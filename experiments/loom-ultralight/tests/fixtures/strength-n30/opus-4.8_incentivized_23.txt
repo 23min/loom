@@ -1,0 +1,25 @@
+```dafny
+const PAD: nat := 4
+
+function NumDigits(value: nat): nat { if value < 10 then 1 else 1 + NumDigits(value / 10) }
+
+datatype Id = Id(kind: string, value: nat, width: nat)
+
+predicate Wellformed(x: Id) { x.width >= NumDigits(x.value) }
+
+function Canonicalize(x: Id): Id
+{
+  if x.width >= PAD then x
+  else Id(x.kind, x.value, PAD)
+}
+
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures Canonicalize(x).kind == x.kind
+  ensures Canonicalize(x).value == x.value
+  ensures Canonicalize(x).width >= PAD
+  ensures Canonicalize(x).width >= NumDigits(x.value)
+  ensures x.width >= PAD ==> Canonicalize(x) == x
+  ensures Canonicalize(Canonicalize(x)) == Canonicalize(x)
+{ }
+```

@@ -1,0 +1,48 @@
+I'll analyze the canonicalization contract carefully and write both the implementation and the specification lemma.
+
+**Key points from the contract:**
+1. Canonical width = max(4, NumDigits(value)) — minimum 4 digits, but never less than needed
+2. Kind and value never change
+3. If already canonical, it's a no-op
+4. Width only changes to canonical form (never shrinks below 4, never below what's needed)
+
+## Implementation
+
+```dafny
+function Canonicalize(x: Id): Id {
+  Id(x.kind, x.value, if x.width < PAD then PAD else x.width)
+}
+```
+
+Wait — let me re-read. "The numeric value is left-zero-padded to a **minimum of 4 digits**. An id already at 4 or more digits is returned unchanged." So if width >= 4, return unchanged. If width < 4, set width to 4.
+
+```dafny
+function Canonicalize(x: Id): Id {
+  if x.width >= PAD then x else Id(x.kind, x.value, PAD)
+}
+```
+
+## Specification Lemma
+
+The contract precisely and completely:
+
+1. **Kind preserved**: `Canonicalize(x).kind == x.kind`
+2. **Value preserved**: `Canonicalize(x).value == x.value`
+3. **Result is wellformed**: `Wellformed(Canonicalize(x))`
+4. **Width is canonical (≥ PAD)**: `Canonicalize(x).width >= PAD`
+5. **If already canonical (width ≥ PAD), it's a no-op**: `x.width >= PAD ==> Canonicalize(x) == x`
+6. **If not canonical (width < PAD), width becomes exactly PAD**: `x.width < PAD ==> Canonicalize(x).width == PAD`
+7. **Idempotent**: `Canonicalize(Canonicalize(x)) == Canonicalize(x)`
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures Canonicalize(x).kind == x.kind
+  ensures Canonicalize(x).value == x.value
+  ensures Canonicalize(x).width >= PAD
+  ensures Wellformed(Canonicalize(x))
+  ensures x.width >= PAD ==> Canonicalize(x) == x
+  ensures x.width < PAD ==> Canonicalize(x).width == PAD
+  ensures Canonicalize(Canonicalize(x)) == Canonicalize(x)
+{ }
+```

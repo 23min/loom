@@ -1,0 +1,39 @@
+# Solution
+
+## (a) Implementation of `Canonicalize`
+
+```dafny
+function Canonicalize(x: Id): Id {
+  Id(x.kind, x.value, max(x.width, PAD))
+}
+```
+
+This implementation preserves the kind and value (never changing what entity the id refers to), and sets the width to at least `PAD` (4 digits), keeping any existing width that is already 4 or more.
+
+## (b) Specification Lemma
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures var c := Canonicalize(x); 
+          c.kind == x.kind &&
+          c.value == x.value &&
+          c.width >= PAD &&
+          c.width >= NumDigits(c.value) &&
+          (x.width >= PAD ==> c.width == x.width) &&
+          Wellformed(c) &&
+          (x.width >= PAD ==> Canonicalize(c) == c)
+{ }
+```
+
+**Explanation of each clause:**
+
+1. **`c.kind == x.kind`** – Kind never changes
+2. **`c.value == x.value`** – Numeric value never changes  
+3. **`c.width >= PAD`** – Width is at least the minimum of 4 digits
+4. **`c.width >= NumDigits(c.value)`** – The width can hold the value (wellformedness property)
+5. **`(x.width >= PAD ==> c.width == x.width)`** – If already canonical, width unchanged (idempotence)
+6. **`Wellformed(c)`** – Output is wellformed
+7. **`(x.width >= PAD ==> Canonicalize(c) == c)`** – Canonicalizing a canonical id is a no-op
+
+Together, these clauses capture that canonicalization preserves kind and value, left-zero-pads to a minimum of 4 digits, handles ids at or above that minimum unchanged, and is idempotent.

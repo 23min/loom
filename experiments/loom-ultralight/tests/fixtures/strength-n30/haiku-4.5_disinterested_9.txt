@@ -1,0 +1,32 @@
+# Solution
+
+## (a) Implementation of `Canonicalize`
+
+```dafny
+function Canonicalize(x: Id): Id {
+  Id(x.kind, x.value, max(PAD, NumDigits(x.value)))
+}
+```
+
+## (b) Lemma specification
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures var c := Canonicalize(x); Wellformed(c)
+  ensures var c := Canonicalize(x); c.kind == x.kind
+  ensures var c := Canonicalize(x); c.value == x.value
+  ensures var c := Canonicalize(x); c.width >= PAD
+  ensures var c := Canonicalize(x); c.width == max(PAD, NumDigits(x.value))
+  ensures var c := Canonicalize(x); Canonicalize(c) == c
+{ }
+```
+
+### Explanation of the ensures clauses:
+
+1. **Wellformed(c)**: The output is wellformed (width can hold the value)
+2. **c.kind == x.kind**: Kind is never changed
+3. **c.value == x.value**: Numeric value is never changed
+4. **c.width >= PAD**: Width is at least 4 (the minimum)
+5. **c.width == max(PAD, NumDigits(x.value))**: This precisely captures the canonical width formula
+6. **Canonicalize(c) == c**: Canonicalizing an already-canonical id is a no-op (idempotence)

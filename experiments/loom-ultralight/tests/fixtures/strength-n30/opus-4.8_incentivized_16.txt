@@ -1,0 +1,26 @@
+```dafny
+function Canonicalize(x: Id): Id
+{
+  if x.width >= PAD then x
+  else Id(x.kind, x.value, PAD)
+}
+
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures Canonicalize(x).kind == x.kind
+  ensures Canonicalize(x).value == x.value
+  ensures Canonicalize(x).width >= PAD
+  ensures Canonicalize(x).width >= NumDigits(x.value)
+  ensures x.width >= PAD ==> Canonicalize(x) == x
+{
+}
+```
+
+Let me verify the reasoning:
+
+- **Kind and value never change**: The implementation only ever sets `width`, keeping `kind` and `value` from `x`. ✓
+- **Minimum width 4**: If `x.width >= PAD`, returned unchanged (still `>= PAD`); otherwise set to `PAD`. So result width `>= PAD`. ✓
+- **Result is wellformed** (`width >= NumDigits(value)`): If `x.width >= PAD`, result is `x` which is wellformed by precondition. Otherwise `x.width < PAD = 4`, and wellformedness gives `x.width >= NumDigits(x.value)`, so `NumDigits(x.value) <= x.width < 4 <= PAD`, thus `PAD >= NumDigits(x.value)`. ✓
+- **No-op on already-canonical**: If `x.width >= PAD`, returns `x` exactly. ✓
+
+All ensures clauses follow directly from the implementation structure and the `Wellformed` precondition, so `dafny verify` should pass without additional proof hints.

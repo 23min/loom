@@ -1,0 +1,21 @@
+```dafny
+function Canonicalize(x: Id): Id {
+  Id(x.kind, x.value, if x.width < PAD then PAD else x.width)
+}
+
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures var c := Canonicalize(x); 
+          c.kind == x.kind
+  ensures var c := Canonicalize(x); 
+          c.value == x.value
+  ensures var c := Canonicalize(x); 
+          c.width >= PAD
+  ensures var c := Canonicalize(x); 
+          Wellformed(c)
+  ensures var c := Canonicalize(x); 
+          (x.width >= PAD ==> c.width == x.width)
+  ensures var c := Canonicalize(x); 
+          (x.width < PAD ==> c.width == PAD)
+{ }
+```

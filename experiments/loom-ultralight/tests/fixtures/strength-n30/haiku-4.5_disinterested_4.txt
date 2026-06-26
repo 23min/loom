@@ -1,0 +1,44 @@
+# Solution
+
+## (a) Implementation of `Canonicalize`
+
+```dafny
+function Canonicalize(x: Id): Id {
+  Id(x.kind, x.value, maxInt(x.width, PAD))
+}
+
+function maxInt(a: nat, b: nat): nat {
+  if a >= b then a else b
+}
+```
+
+Or more concisely without a helper function:
+
+```dafny
+function Canonicalize(x: Id): Id {
+  Id(x.kind, x.value, if x.width >= PAD then x.width else PAD)
+}
+```
+
+## (b) Lemma specification
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures var c := Canonicalize(x); 
+          c.kind == x.kind &&
+          c.value == x.value &&
+          c.width >= PAD &&
+          c.width >= NumDigits(c.value) &&
+          Wellformed(c) &&
+          (x.width >= PAD ⟹ c.width == x.width) &&
+          (x.width < PAD ⟹ c.width == PAD)
+{ }
+```
+
+**Key aspects of the specification:**
+- **Kind and value are preserved** — canonicalization never changes what entity is referenced
+- **Width is at least 4** — the canonical width respects the minimum
+- **Wellformedness is maintained** — the width can hold the value after canonicalization
+- **Idempotence on canonical ids** — if the input is already at 4+ digits, the width doesn't change
+- **Zero-padding to 4** — if the input is below 4 digits, it's padded to exactly 4

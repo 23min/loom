@@ -1,0 +1,78 @@
+I'll analyze the contract carefully and write both the implementation and the specification.
+
+**Contract analysis:**
+1. The kind never changes
+2. The numeric value never changes  
+3. The width becomes `max(4, NumDigits(value))` — padded to at least 4 digits, but if the value already needs more digits, keep those
+4. If already canonical (width >= 4), return unchanged
+5. Canonicalizing an already-canonical id is a no-op
+
+Wait, let me re-read: "the numeric value is left-zero-padded to a **minimum of 4 digits**. An id already at 4 or more digits is returned unchanged."
+
+So canonical width = `max(PAD, NumDigits(value))`. An id is canonical iff its width = `max(PAD, NumDigits(value))`. If width >= 4, return unchanged... but "returned unchanged" means the width stays as-is (not necessarily set to exactly 4).
+
+Re-reading: "An id already at 4 or more digits is returned unchanged" — so if `x.width >= 4`, we return `x` as-is. If `x.width < 4`, we set width to 4.
+
+The canonical width is thus: if `x.width >= PAD` then `x.width` else `PAD`. But this seems odd — it would mean canonical form isn't unique. Let me reconsider.
+
+Actually, I think the canonical width is `max(PAD, x.width)` — since we only pad up to 4, never shrink. If width is already >= 4, it's unchanged. If width < 4, set to PAD=4.
+
+```dafny
+function Canonicalize(x: Id): Id {
+  if x.width >= PAD then x
+  else Id(x.kind, x.value, PAD)
+}
+```
+
+For the lemma, the ensures clauses should capture:
+1. Kind is preserved
+2. Value is preserved  
+3. Width is `max(PAD, x.width)` (i.e., if width >= PAD keep it, else set to PAD)
+4. Result is wellformed
+5. Canonicalizing again is a no-op (idempotence)
+6. Width only increases (never decreases)
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures var c := Canonicalize(x);
+          // kind and value are preserved
+          c.kind == x.kind &&
+          c.value == x.value &&
+          // width is set to max(PAD, x.width)
+          c.width == if x.width >= PAD then x.width else PAD &&
+          // result is wellformed
+          Wellformed(c) &&
+          // width never decreases
+          c.width >= x.width &&
+          // result meets the minimum-4-digits requirement
+          c.width >= PAD &&
+          // idempotence: canonicalizing again changes nothing
+          Canonicalize(c) == c
+{ }
+```
+
+Let me verify idempotence: if `x.width >= PAD`, then `c = x`, so `Canonicalize(c) = Canonicalize(x) = x = c`. If `x.width < PAD`, then `c = Id(x.kind, x.value, PAD)`, and `c.width = PAD >= PAD`, so `Canonicalize(c) = c`. ✓
+
+Wellformed: if `x.width >= PAD`, `c = x`, wellformed by hypothesis. If `x.width < PAD`, `c.width = PAD >= 4 >= NumDigits(x.value)` — wait, is PAD=4 always enough? NumDigits(value) could be > 4 if value >= 10000. But wellformed says `x.width >= NumDigits(x.value)`, and if `x.width < PAD = 4`, then `NumDigits(x.value) <= x.width < 4`, so `NumDigits(x.value) <= 3 < 4 = PAD = c.width`. So yes, wellformed. ✓
+
+The implementation and lemma:
+
+```dafny
+function Canonicalize(x: Id): Id {
+  if x.width >= PAD then x
+  else Id(x.kind, x.value, PAD)
+}
+
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures var c := Canonicalize(x);
+          c.kind == x.kind &&
+          c.value == x.value &&
+          c.width == if x.width >= PAD then x.width else PAD &&
+          Wellformed(c) &&
+          c.width >= x.width &&
+          c.width >= PAD &&
+          Canonicalize(c) == c
+{ }
+```

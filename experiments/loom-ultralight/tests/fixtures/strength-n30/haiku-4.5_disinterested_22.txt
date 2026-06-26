@@ -1,0 +1,44 @@
+Looking at this problem, I need to:
+
+1. **Implement `Canonicalize`**: Rewrite the id with width set to `max(4, NumDigits(value))`
+2. **Specify `Spec`**: Capture what canonicalization guarantees
+
+Let me analyze the contract:
+- Kind and value never change
+- Width becomes at least 4 digits (but more if needed to hold the value)
+- Already-canonical ids are unchanged
+- The result must be wellformed
+
+Here's my solution:
+
+```dafny
+(a) function Canonicalize(x: Id): Id
+{
+  Id(x.kind, x.value, if NumDigits(x.value) < PAD then PAD else NumDigits(x.value))
+}
+```
+
+For part (b), the lemma should specify:
+- Kind and value are preserved
+- The width is canonical (at least 4, but exactly what's needed)
+- The result is wellformed
+- Idempotence: canonicalizing again gives the same result
+
+```dafny
+(b) lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures var c := Canonicalize(x); 
+          c.kind == x.kind &&
+          c.value == x.value &&
+          c.width >= PAD &&
+          c.width == if NumDigits(x.value) < PAD then PAD else NumDigits(x.value) &&
+          Wellformed(c) &&
+          Canonicalize(c) == c
+{ }
+```
+
+The ensures clauses capture:
+1. **Preservation**: `kind` and `value` unchanged
+2. **Canonicality**: `width >= PAD` and equals the minimum needed to represent the value (either PAD or NumDigits)
+3. **Wellformedness**: Result is wellformed
+4. **Idempotence**: Canonicalizing an already-canonical id is a no-op

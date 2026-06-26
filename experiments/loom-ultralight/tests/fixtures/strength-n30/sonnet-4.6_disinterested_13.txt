@@ -1,0 +1,46 @@
+I'll analyze the contract carefully and provide both the implementation and the specification.
+
+## Key observations:
+1. Canonicalization sets width to `max(4, NumDigits(value))` — minimum 4 digits, but never fewer than needed
+2. Kind and value are preserved
+3. Already-canonical ids are unchanged
+4. An id is canonical if its width equals `max(4, NumDigits(value))`
+
+## Implementation
+
+```dafny
+function Canonicalize(x: Id): Id {
+  var canonicalWidth := if NumDigits(x.value) >= PAD then NumDigits(x.value) else PAD;
+  Id(x.kind, x.value, canonicalWidth)
+}
+```
+
+## Lemma with ensures clauses
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  // The kind is preserved
+  ensures Canonicalize(x).kind == x.kind
+  // The numeric value is preserved
+  ensures Canonicalize(x).value == x.value
+  // The canonical width is at least PAD (minimum 4)
+  ensures Canonicalize(x).width >= PAD
+  // The canonical width is at least as wide as needed to represent the value
+  ensures Canonicalize(x).width >= NumDigits(x.value)
+  // The canonical width is exactly max(PAD, NumDigits(value)) — no wider than necessary
+  ensures Canonicalize(x).width == (if NumDigits(x.value) >= PAD then NumDigits(x.value) else PAD)
+  // The result is wellformed
+  ensures Wellformed(Canonicalize(x))
+  // Canonicalizing an already-canonical id is a no-op
+  ensures Canonicalize(Canonicalize(x)) == Canonicalize(x)
+  // An id is unchanged iff it is already at canonical width
+  ensures Canonicalize(x) == x <==> x.width == (if NumDigits(x.value) >= PAD then NumDigits(x.value) else PAD)
+{ }
+```
+
+The central ensures clause is:
+```
+ensures Canonicalize(x).width == (if NumDigits(x.value) >= PAD then NumDigits(x.value) else PAD)
+```
+which precisely captures "left-zero-padded to a minimum of 4 digits; already at 4+ digits is unchanged." The idempotence clause `Canonicalize(Canonicalize(x)) == Canonicalize(x)` captures "canonicalizing an already-canonical id is a no-op" formally.

@@ -1,0 +1,34 @@
+# Solution
+
+## (a) Implementation of `Canonicalize`
+
+```dafny
+function Canonicalize(x: Id): Id {
+  Id(x.kind, x.value, max(x.width, PAD))
+}
+```
+
+The function preserves the kind and numeric value, and sets the width to the maximum of the current width and the minimum padding constant `PAD` (which is 4).
+
+## (b) Specification of `Spec`
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures var c := Canonicalize(x);
+    c.kind == x.kind &&
+    c.value == x.value &&
+    c.width >= PAD &&
+    c.width >= NumDigits(c.value) &&
+    Wellformed(c) &&
+    (x.width >= PAD ==> c == x) &&
+    (x.width < PAD ==> c.width == PAD && c.kind == x.kind && c.value == x.value)
+{ }
+```
+
+This specification captures:
+1. **Kind and value preservation**: The kind and numeric value never change
+2. **Minimum width requirement**: The canonical width is at least `PAD` (4 digits)
+3. **Wellformedness preservation**: The result is wellformed
+4. **Idempotence**: If the input is already at or above the minimum width, canonicalization is a no-op
+5. **Padding behavior**: If the input is below minimum width, it gets padded to exactly `PAD` digits while preserving kind and value

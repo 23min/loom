@@ -1,0 +1,49 @@
+I'll analyze the contract carefully and provide both the implementation and the complete specification.
+
+## Implementation
+
+```dafny
+function Canonicalize(x: Id): Id {
+  Id(x.kind, x.value, if x.width >= PAD then x.width else PAD)
+}
+```
+
+## Lemma with `ensures` clauses
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  // 1. The kind is never changed
+  ensures Canonicalize(x).kind == x.kind
+  // 2. The numeric value is never changed
+  ensures Canonicalize(x).value == x.value
+  // 3. The canonical width is at least PAD (minimum 4 digits)
+  ensures Canonicalize(x).width >= PAD
+  // 4. The canonical width is at least the original width
+  //    (we never shrink below the original — if original >= PAD, it stays unchanged)
+  ensures Canonicalize(x).width >= x.width
+  // 5. If the input is already at or above PAD digits wide, width is unchanged
+  ensures x.width >= PAD ==> Canonicalize(x).width == x.width
+  // 6. If the input is below PAD digits wide, width is set to exactly PAD
+  ensures x.width < PAD ==> Canonicalize(x).width == PAD
+  // 7. The result is wellformed (canonical width can hold the value)
+  ensures Wellformed(Canonicalize(x))
+  // 8. Canonicalizing an already-canonical result is a no-op (idempotence)
+  ensures Canonicalize(Canonicalize(x)) == Canonicalize(x)
+{ }
+```
+
+### Rationale for each clause
+
+| # | Clause | Why it's needed |
+|---|--------|-----------------|
+| 1 | `kind` unchanged | Core invariant — identity of entity |
+| 2 | `value` unchanged | Core invariant — which entity it refers to |
+| 3 | `width >= PAD` | The "minimum 4 digits" requirement |
+| 4 | `width >= x.width` | Never shrinks a wider id |
+| 5 | `x.width >= PAD → width == x.width` | "Already at 4+ digits is returned unchanged" |
+| 6 | `x.width < PAD → width == PAD` | Exactly pads to 4 when below |
+| 7 | `Wellformed(result)` | Result is a valid id |
+| 8 | Idempotence | "Canonicalizing an already-canonical id is a no-op" |
+
+Clauses 3 and 4 are technically implied by 5 and 6 together, but are stated explicitly to make the contract self-documenting and complete.

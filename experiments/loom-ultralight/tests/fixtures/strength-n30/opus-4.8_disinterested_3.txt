@@ -1,0 +1,46 @@
+Looking at this, I need to capture the contract precisely.
+
+## Implementation
+
+```dafny
+function Canonicalize(x: Id): Id
+{
+  if x.width >= PAD then x
+  else Id(x.kind, x.value, PAD)
+}
+```
+
+## Specification
+
+Let me reason about what the contract requires:
+
+1. **Kind never changes**: `Canonicalize(x).kind == x.kind`
+2. **Value never changes**: `Canonicalize(x).value == x.value`
+3. **Width is at least 4 (minimum 4 digits)**: `Canonicalize(x).width >= PAD`
+4. **Width is enough to hold value** (result is wellformed): `Canonicalize(x).width >= NumDigits(x.value)`
+5. **The result width is exactly the max of PAD and the value's existing width** — but more precisely: an id already at 4+ digits is returned *unchanged*, while one below 4 is padded to exactly 4.
+
+The key subtlety: "An id already at 4 or more digits is returned unchanged" means if `width >= 4`, output width `== x.width`. Otherwise output width `== PAD`. This also makes canonicalizing-a-canonical-id a no-op.
+
+The result width is exactly: `if x.width >= PAD then x.width else PAD`, i.e. `max(x.width, PAD)`.
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures Canonicalize(x).kind == x.kind        // kind never changes
+  ensures Canonicalize(x).value == x.value      // numeric value never changes
+  ensures Canonicalize(x).width == (if x.width >= PAD then x.width else PAD)
+                                                // width >=4 unchanged; else padded to exactly PAD
+  ensures Wellformed(Canonicalize(x))           // result can hold its value
+  ensures Canonicalize(x).width >= PAD          // result has at least the minimum width
+  ensures x.width >= PAD ==> Canonicalize(x) == x   // already-canonical is a no-op
+{ }
+```
+
+### Why this is complete
+
+- **Identity-preservation**: clauses 1 and 2 force kind and value to be untouched — the id always refers to the same entity.
+- **Exact width**: clause 3 pins the output width down to a single value `max(x.width, PAD)` — there is no freedom left for the implementation. This single clause already entails the "unchanged if ≥4", "padded to PAD otherwise", and "minimum, not maximum" behaviors.
+- Clauses 4, 5, 6 are technically *implied* by clauses 1–3 (given `Wellformed(x)`), but they're included to make the contract's intent — wellformedness, the minimum, and the no-op property — explicit and auditable.
+
+The crucial completeness point is **clause 3**: a weaker spec like just `width >= PAD` would wrongly permit an id with `width == 7` to be rewritten to width 4 (a no-op violation) or to width 100 (an unintended widening). Pinning width to `max(x.width, PAD)` rules those out.

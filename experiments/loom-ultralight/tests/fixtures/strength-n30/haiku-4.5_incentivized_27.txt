@@ -1,0 +1,50 @@
+Looking at this problem, I need to:
+
+1. **Implement `Canonicalize`**: Rewrite the width to be at least PAD (4) digits, padding with zeros if needed
+2. **Specify `Spec`**: Write ensures clauses that capture the canonical properties
+
+Let me think through the requirements:
+- Keep kind and value unchanged
+- Change width to `max(PAD, NumDigits(value))`
+- The result should be wellformed
+- Applying canonicalize twice should be idempotent
+
+Here's my solution:
+
+```dafny
+function Canonicalize(x: Id): Id {
+  Id(x.kind, x.value, if x.width < PAD then PAD else x.width)
+}
+
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures var c := Canonicalize(x);
+          c.kind == x.kind &&
+          c.value == x.value &&
+          c.width >= PAD &&
+          c.width >= NumDigits(x.value) &&
+          Wellformed(c) &&
+          Canonicalize(c) == c
+{
+  var c := Canonicalize(x);
+  // The function definition directly establishes:
+  // - c.kind == x.kind (unchanged)
+  // - c.value == x.value (unchanged)
+  // - c.width >= PAD (by definition of Canonicalize)
+  // - c.width >= NumDigits(x.value) (since x is Wellformed, x.width >= NumDigits(x.value),
+  //   and c.width = max(PAD, x.width) >= x.width >= NumDigits(x.value))
+  // - Wellformed(c) follows from c.width >= NumDigits(c.value) = NumDigits(x.value)
+  // - Canonicalize(c) == c because c.width >= PAD, so applying the function again yields c
+}
+```
+
+The key insights:
+- **Canonicalize** uses `if x.width < PAD then PAD else x.width` to ensure minimum width of 4
+- **Spec ensures**:
+  1. Kind and value are preserved (not changed)
+  2. Width is at least PAD (4)
+  3. Width is at least the number of digits needed (satisfying Wellformed)
+  4. The result is Wellformed
+  5. Canonicalize is idempotent (applying it again returns the same value)
+
+The proof is straightforward because the function definition directly implements the specification, and the ensures clauses follow directly from how `Canonicalize` is defined and the precondition `Wellformed(x)`.

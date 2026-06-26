@@ -1,0 +1,39 @@
+# Solution
+
+## (a) Implementation of `Canonicalize`
+
+```dafny
+function Canonicalize(x: Id): Id {
+  Id(x.kind, x.value, max(x.width, PAD))
+}
+```
+
+This implementation:
+- Preserves the kind and numeric value (never changing which entity the id refers to)
+- Sets the width to the maximum of the current width and the minimum PAD (4 digits)
+- Is a no-op when the id is already canonical (width ≥ 4)
+
+## (b) Specification Lemma
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures var c := Canonicalize(x); Wellformed(c)
+  ensures var c := Canonicalize(x); c.kind == x.kind
+  ensures var c := Canonicalize(x); c.value == x.value
+  ensures var c := Canonicalize(x); c.width >= PAD
+  ensures var c := Canonicalize(x); c.width >= x.width
+  ensures var c := Canonicalize(x); x.width >= PAD ==> c.width == x.width
+{ }
+```
+
+**Explanation of ensures clauses:**
+
+1. **`Wellformed(c)`**: The canonicalized id is wellformed (width can hold the value)
+2. **`c.kind == x.kind`**: The kind is never changed
+3. **`c.value == x.value`**: The numeric value is never changed
+4. **`c.width >= PAD`**: The result is always at least 4 digits wide
+5. **`c.width >= x.width`**: The width never decreases
+6. **`x.width >= PAD ==> c.width == x.width`**: Canonicalizing an already-canonical id is a no-op
+
+Together, these clauses capture that canonicalization is a monotonic width-adjustment operation that preserves identity while enforcing a minimum display width of 4 digits.

@@ -1,0 +1,46 @@
+Looking at this problem, I need to:
+
+1. Write `Canonicalize` that pads width to a minimum of 4 digits.
+2. Write `Spec` ensures clauses that my implementation provably satisfies.
+
+The canonical width is `max(PAD, NumDigits(value))`, but I should preserve the actual width if it's already ≥ 4. Let me think carefully.
+
+The rule: numeric value left-zero-padded to a **minimum of 4 digits**. An id already at 4+ digits returned unchanged. So:
+- if `width >= 4`: return unchanged.
+- else: set width to 4.
+
+So the new width is `if x.width >= PAD then x.width else PAD`.
+
+Let me verify wellformedness is preserved: if `width < 4`, new width is 4. We need `4 >= NumDigits(value)`. Since input is wellformed, `width >= NumDigits(value)`, and `width < 4`, so `NumDigits(value) <= width < 4 <= 4`. Good.
+
+Here's my implementation and spec:
+
+```dafny
+function Canonicalize(x: Id): Id
+{
+  Id(x.kind, x.value, if x.width >= PAD then x.width else PAD)
+}
+
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures Canonicalize(x).kind == x.kind
+  ensures Canonicalize(x).value == x.value
+  ensures Canonicalize(x).width >= PAD
+  ensures Canonicalize(x).width >= NumDigits(x.value)
+  ensures x.width >= PAD ==> Canonicalize(x) == x
+  ensures Wellformed(Canonicalize(x))
+  ensures Canonicalize(Canonicalize(x)) == Canonicalize(x)
+{ }
+```
+
+Let me double-check each ensures clause:
+
+- **kind unchanged**: `Canonicalize(x).kind == x.kind` — trivially true by construction. ✓
+- **value unchanged**: `Canonicalize(x).value == x.value` — trivially true. ✓
+- **width ≥ PAD**: new width is `if x.width >= PAD then x.width else PAD`. If `width >= PAD`, result is `width >= PAD`. Else result is `PAD >= PAD`. ✓
+- **width ≥ NumDigits(value)**: If `width >= PAD`, result width = width ≥ NumDigits(value) (from Wellformed). If `width < PAD`, result width = PAD = 4, and NumDigits(value) ≤ width < 4 ≤ 4. ✓
+- **already-canonical no-op**: if `x.width >= PAD`, then result is `Id(kind, value, width) == x`. ✓
+- **Wellformed preserved**: follows from width ≥ NumDigits(value). ✓
+- **idempotence**: `Canonicalize(Canonicalize(x))`. The inner result has width ≥ PAD, so the outer call returns it unchanged. ✓
+
+All clauses are provable from the definition and the wellformedness precondition. The reasoning relies only on simple arithmetic (`PAD == 4`) and the monotonicity facts already encoded, which Dafny handles automatically.

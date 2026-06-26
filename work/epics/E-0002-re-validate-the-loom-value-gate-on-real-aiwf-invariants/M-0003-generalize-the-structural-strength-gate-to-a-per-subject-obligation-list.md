@@ -1,16 +1,16 @@
 ---
 id: M-0003
 title: Generalize the structural strength gate to a per-subject obligation list
-status: in_progress
+status: done
 parent: E-0002
 tdd: advisory
 acs:
     - id: AC-1
       title: Strength gate driven by per-subject obligation spec
-      status: open
+      status: met
     - id: AC-2
       title: Canonicalize N=30 strength matches golden fixture
-      status: open
+      status: met
 ---
 ## Goal
 
@@ -73,11 +73,50 @@ under the per-AC sections at the foot of this spec.
 
 ## Work log
 
+### AC-1 — Strength gate driven by per-subject obligation spec
+
+Introduced `Obligation` (`Single` / `Ladder`) + `StrengthSubject`; recovered the
+existing gate as the `CANONICALIZE` subject; generalized `assemble_strength`,
+`classify_ladder`, `probe_spec`, `compute_strength`, and `strength_rows_json` to be
+subject-driven — no canonicalize obligation remains hardcoded in the strength path.
+Three real-Dafny shape fixtures (exclusion `!P` over a ground tuple, bounded `∀`
+over a finite datatype, unary opaque predicate over a single value) each prove the
+interface entails a *pinned* obligation and does **not** entail an unpinned one, so
+the gate is shown to discriminate. Pure `classify_ladder` / `keys()` /
+byte-identical-source tests, plus fast `probe_spec` / `compute_strength` tests,
+cover every branch. tests 11/11 (1 ignored). Landed in `0cdd036`.
+
+### AC-2 — Canonicalize N=30 strength matches golden fixture
+
+Froze the 178-file N=30 generation corpus under `tests/fixtures/strength-n30/`
+(the live `runs/` dir is gitignored) so the regression is reproducible from a clean
+clone (G1). `golden_canonicalize_n30_strength_is_reproduced` re-runs the
+generalized gate over the corpus and diffs the serialized result against the
+committed `results/strength-n30.json`; any changed verdict fails. Marked `#[ignore]`
+(full N=30 Dafny sweep, hundreds of probes); behavior-equality is additionally
+pinned fast by the byte-identical probe-source test. Landed in `0cdd036`.
+
 ## Decisions made during implementation
 
 - (none)
 
 ## Validation
+
+- `cargo test` — 11 passed, 1 ignored (~40s). Covers every branch in the
+  generalized strength path: ladder rung selection (exact / bound-only / free) and
+  short-circuit, the probe-error guard, the missing-file and unextractable-response
+  skips, and zero-default serialization — plus the three new obligation shapes via
+  real Dafny.
+- `cargo test -- --ignored golden_canonicalize_n30_strength_is_reproduced` — passes
+  (1/1, ~31 min): reproduces the committed golden fixture byte-for-byte from the
+  frozen N=30 corpus (AC-2). Independently corroborated — the pre-generalization
+  binary reproduces the same golden from the same corpus.
+- Behavior preservation: `canonicalize_probe_source_is_byte_identical` asserts the
+  generalized probe source equals the pre-generalization template verbatim, so no
+  canonicalize verdict can change.
+- `cargo clippy` / `cargo fmt --check` — the diff adds no new warnings or
+  formatting drift. (Pre-existing drift in the unrelated API-run/mutant path is left
+  untouched — see Reviewer notes.)
 
 ## Deferrals
 
@@ -85,7 +124,27 @@ under the per-AC sections at the foot of this spec.
 
 ## Reviewer notes
 
-- (none)
+- **Independent two-lens review (wrap step 2):** code-quality (`wf-review-code`) →
+  **approve** — all five load-bearing claims verified by running, including the
+  shape negatives confirmed to fail at Dafny's *verification* stage (genuine
+  non-entailment), not the resolve stage. Design (`wf-rethink`) → **keep-as-is**.
+  Two non-blocking items were applied in-milestone: (a) the negative shape fixtures
+  now resolve-guard via a `refutes(...)` helper, so a future typo can't masquerade
+  as non-entailment; (b) a `StrengthSubject::keys()` helper DRYs the
+  column-deriving sites and `debug_assert!`s key uniqueness — closing the one latent
+  footgun for M-0004/M-0005 subject authors (a reused JSON key would otherwise
+  silently collapse a column).
+- The `--strength` CLI path now selects `CANONICALIZE` internally; M-0004/M-0005
+  author their subjects against the same `StrengthSubject` interface — no further
+  gate changes are expected for them.
+- **Stdout-only behavior change:** `print_strength_table` moved from the
+  canonicalize-specific `K%/V%/F%` percentage table to a generic per-key count
+  table (it must work for any subject). The durable record — `strength.json` — is
+  unchanged, and AC-2 pins it.
+- **Pre-existing, out of scope, untouched:** one clippy `complex type` warning on
+  `score_trials` (the API-run path, `src/main.rs:438`) and 9 rustfmt drifts in the
+  mutant/run code predate this milestone. A separate `cargo fmt` + type-alias chore
+  would clear them; left out of M-0003's diff per minimal-change.
 
 ### AC-1 — Strength gate driven by per-subject obligation spec
 

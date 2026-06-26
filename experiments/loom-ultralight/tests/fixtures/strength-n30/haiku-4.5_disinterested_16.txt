@@ -1,0 +1,39 @@
+# Solution
+
+## (a) Implementation of `Canonicalize`
+
+```dafny
+function Canonicalize(x: Id): Id {
+  Id(x.kind, x.value, if x.width < PAD then PAD else x.width)
+}
+```
+
+This function:
+- Preserves the `kind` and `value` (never changes which entity is referred to)
+- Sets the width to `PAD` (4) if the current width is less than 4
+- Leaves the width unchanged if it's already 4 or more
+
+## (b) `ensures` clauses for `Spec`
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures var c := Canonicalize(x); Wellformed(c)
+  ensures var c := Canonicalize(x); c.kind == x.kind
+  ensures var c := Canonicalize(x); c.value == x.value
+  ensures var c := Canonicalize(x); c.width >= PAD
+  ensures var c := Canonicalize(x); x.width >= PAD ==> c.width == x.width
+  ensures var c := Canonicalize(x); x.width < PAD ==> c.width == PAD
+  ensures var c := Canonicalize(x); Canonicalize(c) == c
+{ }
+```
+
+**Explanation of each clause:**
+
+1. **`Wellformed(c)`** — The canonicalized id is wellformed (width can hold the value)
+2. **`c.kind == x.kind`** — Kind is never changed
+3. **`c.value == x.value`** — Numeric value is never changed
+4. **`c.width >= PAD`** — The canonical width is always at least 4
+5. **`x.width >= PAD ==> c.width == x.width`** — If already canonical, width is unchanged
+6. **`x.width < PAD ==> c.width == PAD`** — If not canonical, width becomes exactly PAD
+7. **`Canonicalize(c) == c`** — Idempotence: canonicalizing an already-canonical id is a no-op

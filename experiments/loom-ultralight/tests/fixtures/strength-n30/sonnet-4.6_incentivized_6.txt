@@ -1,0 +1,72 @@
+Looking at this problem, I need to:
+
+1. Implement `Canonicalize` that pads the width to at least 4 digits
+2. Write a lemma `Spec` with ensures clauses that capture the behavior
+
+Let me think about what canonicalization does:
+- Same `kind` and `value` as input
+- `width` becomes `max(4, x.width)` — wait, actually re-reading: "the numeric value is left-zero-padded to a minimum of 4 digits. An id already at 4 or more digits is returned unchanged"
+
+So if `width >= 4`, return unchanged. If `width < 4`, set `width = 4`.
+
+This means `width` becomes `max(4, x.width)`.
+
+Now for the lemma, I need ensures clauses that:
+1. The kind is preserved
+2. The value is preserved  
+3. The width is at least 4
+4. The result is wellformed
+5. If already canonical (width >= 4), it's unchanged
+6. The new width equals max(4, x.width)
+
+Let me also think about what Dafny needs to verify. The `Wellformed` predicate says `x.width >= NumDigits(x.value)`. If `x.width >= 4`, we return `x`, which is wellformed. If `x.width < 4`, we return `Id(x.kind, x.value, 4)`, and we need `4 >= NumDigits(x.value)`. Since `x` is wellformed, `x.width >= NumDigits(x.value)`, and `x.width < 4` means `NumDigits(x.value) <= x.width < 4`, so `NumDigits(x.value) < 4 <= 4`. That works.
+
+Here's my implementation:
+
+```dafny
+function Canonicalize(x: Id): Id {
+  if x.width >= PAD then x else Id(x.kind, x.value, PAD)
+}
+```
+
+And the lemma:
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures Canonicalize(x).kind == x.kind
+  ensures Canonicalize(x).value == x.value
+  ensures Canonicalize(x).width >= PAD
+  ensures Wellformed(Canonicalize(x))
+  ensures x.width >= PAD ==> Canonicalize(x) == x
+  ensures Canonicalize(x).width == if x.width >= PAD then x.width else PAD
+{ }
+```
+
+Let me verify the wellformedness in the `else` branch: `x.width < 4` and `Wellformed(x)` means `x.width >= NumDigits(x.value)`, so `NumDigits(x.value) <= x.width < 4`, thus `NumDigits(x.value) < 4 <= PAD = 4`. So `PAD >= NumDigits(x.value)`. Dafny should handle this automatically.
+
+The full code:
+
+```dafny
+const PAD: nat := 4
+
+function NumDigits(value: nat): nat { if value < 10 then 1 else 1 + NumDigits(value / 10) }
+
+datatype Id = Id(kind: string, value: nat, width: nat)
+
+predicate Wellformed(x: Id) { x.width >= NumDigits(x.value) }
+
+function Canonicalize(x: Id): Id {
+  if x.width >= PAD then x else Id(x.kind, x.value, PAD)
+}
+
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures Canonicalize(x).kind == x.kind
+  ensures Canonicalize(x).value == x.value
+  ensures Canonicalize(x).width >= PAD
+  ensures Wellformed(Canonicalize(x))
+  ensures x.width >= PAD ==> Canonicalize(x) == x
+  ensures Canonicalize(x).width == if x.width >= PAD then x.width else PAD
+{ }
+```

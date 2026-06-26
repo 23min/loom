@@ -1,0 +1,50 @@
+I'll analyze the contract carefully:
+
+1. Canonicalization sets width to `max(4, NumDigits(value))` — i.e., at least 4 digits, but never shrinks below what's needed to represent the value.
+2. Kind and value never change.
+3. Canonicalizing an already-canonical id is a no-op.
+4. The result is wellformed.
+
+## (a) Implementation
+
+```dafny
+function Canonicalize(x: Id): Id {
+  Id(x.kind, x.value, if x.width >= PAD then x.width else PAD)
+}
+```
+
+Wait — re-reading: "An id already at 4 or more digits is returned unchanged." So if width >= 4, return as-is. If width < 4, set width to 4. The numeric value is padded to a *minimum* of 4 digits, meaning width becomes max(4, current_width)... but actually "an id already at 4 or more digits is returned unchanged" means if width >= 4, no change. If width < 4, set to 4.
+
+```dafny
+function Canonicalize(x: Id): Id {
+  if x.width >= PAD then x
+  else Id(x.kind, x.value, PAD)
+}
+```
+
+## (b) Lemma with `ensures` clauses
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures Canonicalize(x).kind == x.kind
+  ensures Canonicalize(x).value == x.value
+  ensures Canonicalize(x).width >= PAD
+  ensures Canonicalize(x).width >= x.width
+  ensures Canonicalize(x).width == (if x.width >= PAD then x.width else PAD)
+  ensures Wellformed(Canonicalize(x))
+  ensures Canonicalize(Canonicalize(x)) == Canonicalize(x)
+{ }
+```
+
+Let me verify completeness:
+
+- **Kind unchanged**: `Canonicalize(x).kind == x.kind` ✓
+- **Value unchanged**: `Canonicalize(x).value == x.value` ✓  
+- **Minimum 4 digits**: `Canonicalize(x).width >= PAD` ✓
+- **Never shrinks width**: `Canonicalize(x).width >= x.width` ✓ (already-wide ids unchanged)
+- **Exact width value** (precise characterization): the `if` clause ✓
+- **Result is wellformed**: `Wellformed(Canonicalize(x))` ✓
+- **Idempotent** (canonicalizing canonical is no-op): `Canonicalize(Canonicalize(x)) == Canonicalize(x)` ✓
+
+The exact-width ensures subsumes the min-4 and no-shrink clauses logically, but I keep them explicit for clarity and completeness of the audit.

@@ -1,0 +1,52 @@
+I'll analyze the contract carefully and provide both the implementation and the specification.
+
+## Analysis
+
+The canonicalization rules:
+1. The `kind` never changes
+2. The `value` never changes  
+3. The `width` becomes `max(4, NumDigits(value))` — padded to minimum 4 digits, but never truncated if already wider... wait, re-reading: "An id already at 4 or more digits is returned **unchanged**"
+
+So the rule is:
+- If `width < 4`: set width to 4 (left-zero-pad to 4 digits)
+- If `width >= 4`: return unchanged (it's already canonical)
+
+Canonical width = `max(4, x.width)` ... but wait, that would mean width=5 stays at 5. But the description says "minimum of 4 digits" for the canonical form. Let me re-read.
+
+"canonicalization rewrites an id to canonical width: the numeric value is left-zero-padded to a **minimum of 4 digits**. An id already at 4 or more digits is returned unchanged."
+
+So canonical means width ≥ 4. If already width ≥ 4, unchanged. If width < 4, set to 4. This means canonical width = `max(4, x.width)`.
+
+But also we need `Wellformed` on output: width must be ≥ NumDigits(value). Since input is wellformed, `x.width >= NumDigits(x.value)`. If `x.width >= 4`, output width = x.width, still wellformed. If `x.width < 4`, output width = 4 ≥ x.width ≥ NumDigits(x.value), so still wellformed.
+
+## Implementation
+
+```dafny
+function Canonicalize(x: Id): Id {
+  if x.width < PAD then Id(x.kind, x.value, PAD)
+  else x
+}
+```
+
+## Lemma Spec
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures Canonicalize(x).kind == x.kind
+  ensures Canonicalize(x).value == x.value
+  ensures Canonicalize(x).width == if x.width < PAD then PAD else x.width
+  ensures Canonicalize(x).width >= PAD
+  ensures Wellformed(Canonicalize(x))
+  ensures Canonicalize(Canonicalize(x)) == Canonicalize(x)
+{ }
+```
+
+The ensures clauses capture:
+
+1. **Kind preservation**: kind is never changed
+2. **Value preservation**: value is never changed  
+3. **Width rule**: exactly characterizes the new width (max(PAD, x.width))
+4. **Canonical guarantee**: result has width ≥ 4 (the "minimum 4 digits" property)
+5. **Wellformedness**: the result is wellformed (width can hold the value)
+6. **Idempotence**: canonicalizing an already-canonical id is a no-op (re-canonicalizing gives same result)
