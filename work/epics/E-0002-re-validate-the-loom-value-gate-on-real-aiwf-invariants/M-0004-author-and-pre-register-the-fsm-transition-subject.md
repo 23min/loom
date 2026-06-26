@@ -10,6 +10,9 @@ acs:
     - id: AC-1
       title: Gold FSM spec + reference impl verify
       status: open
+    - id: AC-2
+      title: 'Mutant bank: gold kills full bank, isolating mutant per tell'
+      status: open
 ---
 ## Goal
 
@@ -101,4 +104,6 @@ single-input goals before the pre-registration is finalized. (aiwf source cloned
 - (none)
 
 ### AC-1 — Gold FSM spec + reference impl verify
+
+### AC-2 — Mutant bank: gold kills full bank, isolating mutant per tell
 
