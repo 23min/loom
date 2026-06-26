@@ -142,16 +142,14 @@ epic, gated on this result.
 
 ## Milestones
 
-<!-- Deliverable-named; canonical ids are allocated by aiwfx-plan-milestones. -->
+Sequence: M-0003 → (M-0004 ∥ M-0005) → M-0006. The gate generalization is
+foundational (it confirms each subject's obligations are isolable single-input
+goals before that subject's pre-registration is finalized), so it precedes subject
+authoring; the two subjects then proceed in parallel.
 
-- Author the two subjects (gold spec + reference impl + clause-isolated mutant
-  bank for each, with an isolating mutant per predicted-tell obligation) and commit
-  the per-subject pre-registration (full obligation set, predicted-to-weaken,
-  falsifying outcome, thresholds, subject-combination rule) before any run.
-- Generalize the structural strength gate to a per-subject obligation list over an
-  opaque function/predicate, and confirm each subject's obligations are isolable
-  single-input goals (FSM as a finite status datatype; prosey as `string → bool`)
-  before that subject's pre-registration is finalized.
-- Run the two-arm experiment on both subjects and record each result against its
-  pre-registration, with the pre-registered combination rule yielding an
-  epic-level go/no-go decision.
+| Milestone | Deliverable | Depends on |
+|---|---|---|
+| M-0003 | Generalize the structural strength gate to a per-subject obligation list (regression-verified against the canonicalize N=30 data) | — |
+| M-0004 | Author and pre-register the FSM-transition subject (negative-space tell) | M-0003 |
+| M-0005 | Author and pre-register the prosey-title subject (multi-sentence-rule tell) | M-0003 |
+| M-0006 | Run the two-arm experiment on both subjects and record the verdict (ancestor-SHA guard, combination-rule go/no-go) | M-0004, M-0005 |
