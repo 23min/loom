@@ -10,7 +10,7 @@ acs:
       status: met
     - id: AC-2
       title: Canonicalize N=30 strength matches golden fixture
-      status: open
+      status: met
 ---
 ## Goal
 
