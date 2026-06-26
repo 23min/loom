@@ -1,7 +1,7 @@
 ---
 id: M-0003
 title: Generalize the structural strength gate to a per-subject obligation list
-status: draft
+status: in_progress
 parent: E-0002
 tdd: advisory
 acs:
