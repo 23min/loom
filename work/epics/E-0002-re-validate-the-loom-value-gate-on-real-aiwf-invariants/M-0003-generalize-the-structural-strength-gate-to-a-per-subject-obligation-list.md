@@ -8,6 +8,9 @@ acs:
     - id: AC-1
       title: Strength gate driven by per-subject obligation spec
       status: open
+    - id: AC-2
+      title: Canonicalize N=30 strength matches golden fixture
+      status: open
 ---
 ## Goal
 
@@ -97,4 +100,6 @@ single-input goals before pre-registering.
 - (none)
 
 ### AC-1 — Strength gate driven by per-subject obligation spec
+
+### AC-2 — Canonicalize N=30 strength matches golden fixture
 
