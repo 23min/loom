@@ -27,14 +27,17 @@ single-input goals before pre-registering.
 
 <!-- Candidate ACs; formalized via `aiwf add ac` at start-milestone. -->
 
-- The strength gate is driven by a per-subject obligation specification — a list of
-  `(label, goal-expression, optional ladder rungs)` over a named opaque
-  function/predicate symbol — with **no canonicalize-specific obligation hardcoded**
-  in the strength path.
+- Given a per-subject obligation spec over a named opaque function/predicate, the
+  gate emits per-obligation **exact/bound/absent verdicts driven entirely by that
+  spec**, with no canonicalize obligation hardcoded in the strength path —
+  exercised by minimal fixtures covering the obligation **shapes the new subjects
+  need**, including at least an **exclusion goal** (`!P` over a ground tuple) and a
+  **bounded quantifier over a finite datatype**, proving the interface is general
+  beyond the canonicalize unary-function shape.
 - Re-running the generalized gate on the cached canonicalize N=30 generations
-  **reproduces the previously recorded strength table** (per-condition K/V/F
-  entailment counts and the width exact/bound/free distribution), unchanged. Any
-  changed verdict fails this AC.
+  reproduces a **committed golden strength fixture** (the per-condition K/V/F
+  entailment counts and the width exact/bound/free distribution), diffed
+  mechanically; any changed verdict fails this AC.
 
 ## Constraints
 
