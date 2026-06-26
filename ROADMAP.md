@@ -35,4 +35,5 @@ go/no-go on whether to build the full loom-light pipeline.
 | M-0004 | Author and pre-register the FSM-transition subject | draft |
 | M-0005 | Author and pre-register the prosey-title subject | draft |
 | M-0006 | Run the two-arm experiment on both subjects and record the verdict | draft |
+| M-0007 | Pre-register the subject-combination rule and go/no-go procedure | draft |
 
