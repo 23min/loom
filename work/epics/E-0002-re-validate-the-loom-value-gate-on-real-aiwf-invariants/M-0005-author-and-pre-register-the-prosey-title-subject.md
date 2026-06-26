@@ -1,7 +1,7 @@
 ---
 id: M-0005
 title: Author and pre-register the prosey-title subject
-status: in_progress
+status: done
 parent: E-0002
 depends_on:
     - M-0003
