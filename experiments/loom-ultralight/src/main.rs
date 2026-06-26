@@ -1687,4 +1687,338 @@ mod tests {
         all.sort();
         assert_eq!(covered, all, "mutant bank must isolate every obligation");
     }
+
+    // ===== M-0005: the prosey-title subject (IsProseyTitle) =====
+    //
+    // The gold subject lives in prosey.dfy + mutants-prosey/; the obligation list
+    // below is the strength-gate form of the same gold obligations. Unlike the FSM
+    // subject (finite enum domain), the input is an unbounded string — so every
+    // obligation is probed as a CONCRETE LITERAL WITNESS (a ground `IsProsey("…")`),
+    // keeping each probe in Dafny's decidable ground-evaluation regime rather than
+    // forcing Z3 into unbounded `forall s: string` sequence reasoning that times out.
+    // M-0006 wires this into the production run path; here it confirms each obligation
+    // probes through the M-0003 gate (AC-3) and the mutant bank calibrates (AC-2).
+
+    /// The prosey-title subject: opaque `IsProsey` over a single string, with the
+    /// gold obligation set as concrete witness goals. Keys mirror the five gold
+    /// checks in prosey.dfy, with the multi-sentence rule split into its presence
+    /// (`ms_present`) and capital-precision (`ms_needs_capital`) — the predicted tell.
+    const PROSEY_SUBJECT: StrengthSubject = StrengthSubject {
+        opaque_decls: "predicate {:opaque} IsProsey(s: string) { false }",
+        binder: "",
+        requires: "",
+        obligations: &[
+            // easy triggers — the control; both arms entail these.
+            // over_length is a `forall` (not a witness): the reference's length branch
+            // short-circuits before any recursive scan, so the goal is decidable
+            // without an 81-char literal for Dafny to churn over — and it states the
+            // check more faithfully ("ANY long title is prosey").
+            Obligation::Single {
+                key: "over_length",
+                goal: "forall s: string :: |s| > 80 ==> IsProsey(s)",
+            },
+            // Minimal witnesses (3–6 chars): each triggers exactly its own check, so
+            // the recursive scan Dafny ground-evaluates stays shallow (matching
+            // prosey.dfy's gold ensures).
+            Obligation::Single {
+                key: "newline",
+                goal: "IsProsey(\"a\\nb\")",
+            },
+            Obligation::Single {
+                key: "markdown",
+                goal: "IsProsey(\"a**b\")",
+            },
+            Obligation::Single {
+                key: "link_bracket",
+                goal: "IsProsey(\"a](b\")",
+            },
+            // multi-sentence rule — the tell. "Go. Up" has a real boundary
+            // (period+space+CAPITAL); "Go. up" differs by one char (lowercase) and is
+            // NOT a boundary — the minimal pair that pins the capital precision.
+            Obligation::Single {
+                key: "ms_present",
+                goal: "IsProsey(\"Go. Up\")",
+            },
+            Obligation::Single {
+                key: "ms_needs_capital",
+                goal: "!IsProsey(\"Go. up\")",
+            },
+        ],
+    };
+
+    /// The full characterization — the disinterested/gold spec assumed. Pins every
+    /// witness explicitly (the decidable analog of a `forall s` biconditional, which
+    /// over the string domain would force Z3 into sequence-quantifier timeouts), so
+    /// it entails every obligation.
+    const PROSEY_FULL_SPEC: &str = "  requires (forall s: string :: |s| > 80 ==> IsProsey(s)) \
+         && IsProsey(\"a\\nb\") && IsProsey(\"a**b\") && IsProsey(\"a](b\") \
+         && IsProsey(\"Go. Up\") && !IsProsey(\"Go. up\")";
+
+    /// A positive-only spec — the predicted incentivized shape. Pins the four easy
+    /// triggers but says nothing about the multi-sentence rule, so it entails the
+    /// easy obligations but neither `ms_present` nor `ms_needs_capital`.
+    const PROSEY_POSITIVE_ONLY: &str = "  requires (forall s: string :: |s| > 80 ==> IsProsey(s)) \
+         && IsProsey(\"a\\nb\") && IsProsey(\"a**b\") && IsProsey(\"a](b\")";
+
+    /// AC-1: the gold prosey.dfy spec is valid against its reference implementation —
+    /// `dafny verify prosey.dfy` succeeds (all gold obligations hold for the
+    /// reference IsProsey).
+    #[test]
+    fn prosey_gold_verifies() {
+        let f = root().join("prosey.dfy");
+        let (outcome, log) = run_dafny(&f, Duration::from_secs(60));
+        assert!(
+            outcome == Outcome::Verified,
+            "prosey.dfy gold spec failed to verify (outcome: {}):\n{log}",
+            outcome_label(outcome)
+        );
+    }
+
+    /// AC-3: every gold obligation probes as an isolable single-input goal through
+    /// the M-0003 gate. The full spec entails all of them; the positive-only spec
+    /// entails the easy triggers but NEITHER multi-sentence obligation — the tell
+    /// discriminates the two specs, which is the whole point of the subject.
+    #[test]
+    fn prosey_obligations_probe_and_discriminate() {
+        let wd = fixture_workdir("prosey-probe");
+        let to = Duration::from_secs(60);
+
+        // The full (disinterested) spec entails every obligation in the set.
+        for ob in PROSEY_SUBJECT.obligations {
+            let (key, goal) = match ob {
+                Obligation::Single { key, goal } => (*key, *goal),
+                Obligation::Ladder { .. } => unreachable!("PROSEY uses only Single obligations"),
+            };
+            assert!(
+                entails(&wd, "", &PROSEY_SUBJECT, PROSEY_FULL_SPEC, goal, to),
+                "full spec should entail {key}"
+            );
+        }
+
+        // The positive-only spec entails all four easy triggers ...
+        for goal in [
+            "forall s: string :: |s| > 80 ==> IsProsey(s)",
+            "IsProsey(\"a\\nb\")",
+            "IsProsey(\"a**b\")",
+            "IsProsey(\"a](b\")",
+        ] {
+            assert!(
+                entails(&wd, "", &PROSEY_SUBJECT, PROSEY_POSITIVE_ONLY, goal, to),
+                "positive-only spec should entail easy trigger {goal}"
+            );
+        }
+        // ... but NEITHER multi-sentence obligation (resolve-guarded).
+        assert!(refutes(
+            &wd,
+            &PROSEY_SUBJECT,
+            PROSEY_POSITIVE_ONLY,
+            "IsProsey(\"Go. Up\")"
+        ));
+        assert!(refutes(
+            &wd,
+            &PROSEY_SUBJECT,
+            PROSEY_POSITIVE_ONLY,
+            "!IsProsey(\"Go. up\")"
+        ));
+    }
+
+    /// Read prosey.dfy's preamble + gold ensures and assemble a calibration probe for
+    /// a mutant `IsProsey` implementation (gold ensures over the mutant impl).
+    fn prosey_calibration_probe(mutant: &str) -> String {
+        let prosey = read(&root().join("prosey.dfy"));
+        let preamble = slice_between(
+            &prosey,
+            "// === BEGIN PREAMBLE ===",
+            "// === END PREAMBLE ===",
+        )
+        .expect("preamble sentinels in prosey.dfy");
+        let gold = slice_between(
+            &prosey,
+            "// === BEGIN GOLD SPEC ENSURES ===",
+            "// === END GOLD SPEC ENSURES ===",
+        )
+        .expect("gold-ensures sentinels in prosey.dfy");
+        format!("{preamble}\n\n{mutant}\n\nlemma GoldSpec()\n{gold}\n{{ }}\n")
+    }
+
+    /// AC-2: the gold prosey spec kills every mutant in the bank — the gold ensures
+    /// fail to verify against each mutant implementation.
+    #[test]
+    fn prosey_gold_kills_full_mutant_bank() {
+        let wd = fixture_workdir("prosey-calibrate");
+        let to = Duration::from_secs(60);
+        let mut mutants: Vec<PathBuf> = fs::read_dir(root().join("mutants-prosey"))
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .filter(|p| p.extension().and_then(|x| x.to_str()) == Some("dfy"))
+            .collect();
+        mutants.sort();
+        assert_eq!(mutants.len(), 6, "expected the full 6-mutant prosey bank");
+        for p in &mutants {
+            let src = prosey_calibration_probe(&read(p));
+            let f = wd.join("_prosey_cal.dfy");
+            fs::write(&f, &src).unwrap();
+            let (outcome, _) = run_dafny(&f, to);
+            assert!(
+                outcome == Outcome::Failed,
+                "gold did not kill mutant {} (outcome: {})",
+                p.display(),
+                outcome_label(outcome)
+            );
+        }
+    }
+
+    /// AC-2 (isolation, the G-0001 discipline): every mutant breaks *exactly one*
+    /// gold obligation. Probes each of the 6 gold obligation-clauses individually
+    /// against each mutant and asserts exactly one fails — so the bank cannot be too
+    /// coarse to attribute a kill to a specific obligation (the G-0003 guard), and
+    /// every obligation — both halves of the multi-sentence tell included — has an
+    /// isolating mutant. Slow (6 × 6 dafny calls); run with `cargo test -- --ignored`.
+    #[test]
+    #[ignore = "slow: 6 obligations x 6 mutants Dafny isolation sweep"]
+    fn prosey_mutants_are_clause_isolated() {
+        let prosey = read(&root().join("prosey.dfy"));
+        let preamble = slice_between(
+            &prosey,
+            "// === BEGIN PREAMBLE ===",
+            "// === END PREAMBLE ===",
+        )
+        .expect("preamble sentinels in prosey.dfy");
+        // The 6 gold obligation-clauses, individually probeable.
+        let obligations: &[(&str, &str)] = &[
+            (
+                "over_length",
+                "forall s: string :: |s| > 80 ==> IsProsey(s)",
+            ),
+            ("newline", "IsProsey(\"a\\nb\")"),
+            ("markdown", "IsProsey(\"a**b\")"),
+            ("link_bracket", "IsProsey(\"a](b\")"),
+            ("ms_present", "IsProsey(\"Go. Up\")"),
+            ("ms_needs_capital", "!IsProsey(\"Go. up\")"),
+        ];
+        // The pre-registered mutant → broken-obligation mapping (prereg-prosey.md §3).
+        // Pinning the exact identity (not just "exactly one") makes a mutant swap
+        // that silently drifts the table fail, and the coverage check below makes the
+        // G-0003 guard ("every obligation has an isolating mutant") mechanical.
+        let expected: &[(&str, &str)] = &[
+            ("mlen.dfy", "over_length"),
+            ("mnl.dfy", "newline"),
+            ("mmd.dfy", "markdown"),
+            ("mlink.dfy", "link_bracket"),
+            ("mms_drop.dfy", "ms_present"),
+            ("mms_nocap.dfy", "ms_needs_capital"),
+        ];
+        let wd = fixture_workdir("prosey-isolation");
+        let to = Duration::from_secs(60);
+        let dir = root().join("mutants-prosey");
+
+        // The bank on disk is exactly the mapped set — no untracked or missing mutant.
+        let mut on_disk: Vec<String> = fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|n| n.ends_with(".dfy"))
+            .collect();
+        on_disk.sort();
+        let mut mapped: Vec<String> = expected.iter().map(|(f, _)| f.to_string()).collect();
+        mapped.sort();
+        assert_eq!(
+            on_disk, mapped,
+            "mutant bank does not match the expected mapping"
+        );
+
+        // Each mutant breaks exactly its mapped obligation — nothing more, nothing less.
+        for (file, want) in expected {
+            let mutant = read(&dir.join(file));
+            let broken: Vec<&str> = obligations
+                .iter()
+                .filter(|(_, goal)| {
+                    let src =
+                        format!("{preamble}\n\n{mutant}\n\nlemma Ob()\n  ensures {goal}\n{{ }}\n");
+                    let f = wd.join("_prosey_iso.dfy");
+                    fs::write(&f, &src).unwrap();
+                    // broken ⇔ the obligation does not hold against the mutant impl
+                    run_dafny(&f, to).0 != Outcome::Verified
+                })
+                .map(|(k, _)| *k)
+                .collect();
+            assert_eq!(
+                broken,
+                vec![*want],
+                "mutant {file} should break exactly [{want}], broke {broken:?}"
+            );
+        }
+
+        // Coverage (the G-0003 guard): every one of the 6 obligations is isolated.
+        let mut covered: Vec<&str> = expected.iter().map(|(_, k)| *k).collect();
+        covered.sort();
+        covered.dedup();
+        let mut all: Vec<&str> = obligations.iter().map(|(k, _)| *k).collect();
+        all.sort();
+        assert_eq!(covered, all, "mutant bank must isolate every obligation");
+    }
+
+    // ===== Subject ↔ gold seam guard (C1 / D2) =====
+    //
+    // Each subject's obligation goals live in TWO sources: the hand-written
+    // `StrengthSubject` (what the strength gate probes) and the gold `.dfy`'s GOLD
+    // SPEC ENSURES block (what the mutant bank is calibrated against, sliced via the
+    // same sentinels the calibration trusts). Nothing else asserts the two agree —
+    // so editing a witness in one source but not the other would leave the gate
+    // probing goals the gold no longer characterizes, silently. These tests pin the
+    // two sets equal, making that drift a build failure (the loom C1 single-source-of
+    // -truth + D2 equivalence-at-seams mandate).
+
+    /// A `StrengthSubject`'s obligation goals (every Single goal + every Ladder rung),
+    /// whitespace-normalized so incidental spacing never masks a match.
+    fn subject_goals(subject: &StrengthSubject) -> Vec<String> {
+        let norm = |g: &str| g.split_whitespace().collect::<Vec<_>>().join(" ");
+        let mut goals: Vec<String> = subject
+            .obligations
+            .iter()
+            .flat_map(|o| match o {
+                Obligation::Single { goal, .. } => vec![norm(goal)],
+                Obligation::Ladder { rungs, .. } => rungs.iter().map(|(_, g)| norm(g)).collect(),
+            })
+            .collect();
+        goals.sort();
+        goals
+    }
+
+    /// The `ensures` goals in a gold `.dfy`'s GOLD SPEC ENSURES block — each stripped
+    /// of any trailing `//` comment and whitespace-normalized to match `subject_goals`.
+    fn gold_ensures_goals(dfy: &str) -> Vec<String> {
+        let block = slice_between(
+            dfy,
+            "// === BEGIN GOLD SPEC ENSURES ===",
+            "// === END GOLD SPEC ENSURES ===",
+        )
+        .expect("gold-ensures sentinels");
+        let mut goals: Vec<String> = block
+            .lines()
+            .filter_map(|l| l.trim().strip_prefix("ensures "))
+            .map(|rest| {
+                let code = rest.split("//").next().unwrap_or(rest);
+                code.split_whitespace().collect::<Vec<_>>().join(" ")
+            })
+            .collect();
+        goals.sort();
+        goals
+    }
+
+    /// The prosey gate's obligation goals are exactly its gold's `ensures` (M-0005).
+    #[test]
+    fn prosey_subject_goals_match_gold_ensures() {
+        let dfy = read(&root().join("prosey.dfy"));
+        assert_eq!(subject_goals(&PROSEY_SUBJECT), gold_ensures_goals(&dfy));
+    }
+
+    /// The FSM gate's obligation goals are exactly its gold's `ensures` (M-0004) —
+    /// the same seam, guarded against the same drift.
+    #[test]
+    fn fsm_subject_goals_match_gold_ensures() {
+        let dfy = read(&root().join("fsm.dfy"));
+        assert_eq!(subject_goals(&FSM_SUBJECT), gold_ensures_goals(&dfy));
+    }
 }
