@@ -1004,6 +1004,67 @@ fn strength(runs_dir: &Path, workdir: &Path, preamble: &str, timeout: Duration) 
     println!("\nstrength.json written to {}", final_path.display());
 }
 
+// ===== E-0002 / M-0007: the cross-subject combination rule =====
+//
+// The pre-registered procedure that maps the PAIR of per-subject verdicts (each from
+// a subject's own verdict map — M-0004 FSM, M-0005 prosey) to one epic-level go/no-go
+// on building loom-light. The prose rationale and the full truth table live in
+// prereg-combination.md; this is the same rule as machine-checkable code, with its
+// totality and exact mapping pinned by `combine_matches_preregistered_truth_table`.
+// M-0006 wires `combine` into the run path (hence `#[allow(dead_code)]` until then —
+// the milestone records the procedure; M-0006 applies it to the actual verdicts).
+
+/// One subject's categorical verdict, as defined by that subject's pre-registered
+/// verdict map (the M-0004 / M-0005 §6 functions).
+#[allow(dead_code)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Verdict {
+    /// The claim-weakening effect reproduced — material gap, localized to the tell.
+    Reproduced,
+    /// A genuine negative: no material gap, not localized, or the wrong direction.
+    NotReproduced,
+    /// Unmeasurable — too few valid specs, or Z3 nondeterminism over the ceiling.
+    Inconclusive,
+}
+
+/// The epic-level decision — the terminal output that discharges D-0001.
+#[allow(dead_code)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Decision {
+    /// Both subjects reproduced — the effect re-validated; build loom-light.
+    Proceed,
+    /// At least one subject is a genuine negative — generalization not established.
+    NoGo,
+    /// No negative, but not both reproduced — at least one subject is unmeasured.
+    /// Resolve it (rerun with more samples / a longer Z3 budget, or expand/replace
+    /// the subject), then re-apply the rule. These are exactly the pairs where
+    /// resolving the inconclusive subject could change the decision.
+    RerunOrExpand,
+}
+
+/// The pre-registered cross-subject combination rule (E-0002 / M-0007): total over
+/// all 3×3 verdict pairs and symmetric (neither subject is privileged).
+///
+/// PROCEED iff BOTH reproduced; NO-GO iff EITHER is a genuine negative (a real
+/// not-reproduced is the falsification signal re-validation exists to detect, and is
+/// never outweighed by the other subject's positive); else RERUN-OR-EXPAND. The
+/// proceed / no-go outcomes are invariant under any resolution of an inconclusive
+/// subject; rerun-or-expand fires exactly when resolving it could flip the decision.
+#[allow(dead_code)]
+fn combine(a: Verdict, b: Verdict) -> Decision {
+    use Verdict::*;
+    match (a, b) {
+        // a genuine negative on either subject dominates
+        (NotReproduced, _) | (_, NotReproduced) => Decision::NoGo,
+        // no negative, both reproduced
+        (Reproduced, Reproduced) => Decision::Proceed,
+        // no negative, at least one inconclusive (and not both reproduced)
+        (Reproduced, Inconclusive) | (Inconclusive, Reproduced) | (Inconclusive, Inconclusive) => {
+            Decision::RerunOrExpand
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2020,5 +2081,61 @@ mod tests {
     fn fsm_subject_goals_match_gold_ensures() {
         let dfy = read(&root().join("fsm.dfy"));
         assert_eq!(subject_goals(&FSM_SUBJECT), gold_ensures_goals(&dfy));
+    }
+
+    // ===== M-0007: the combination rule is total and matches the pre-registration =====
+
+    /// M-0007 AC-2: `combine` is a total function over the 3×3 verdict grid and maps
+    /// every pair to exactly the decision pre-registered in prereg-combination.md.
+    /// The `expected` table is an INDEPENDENT hand-written oracle (not derived from
+    /// `combine`), so a change to the rule that diverges from the committed table
+    /// fails here — and the grid-coverage check makes "total" mechanical, not prose.
+    #[test]
+    fn combine_matches_preregistered_truth_table() {
+        use Decision::*;
+        use Verdict::*;
+        // The committed truth table (prereg-combination.md), pair → decision.
+        let expected: &[(Verdict, Verdict, Decision)] = &[
+            (Reproduced, Reproduced, Proceed),
+            (Reproduced, NotReproduced, NoGo),
+            (Reproduced, Inconclusive, RerunOrExpand),
+            (NotReproduced, Reproduced, NoGo),
+            (NotReproduced, NotReproduced, NoGo),
+            (NotReproduced, Inconclusive, NoGo),
+            (Inconclusive, Reproduced, RerunOrExpand),
+            (Inconclusive, NotReproduced, NoGo),
+            (Inconclusive, Inconclusive, RerunOrExpand),
+        ];
+        // Totality: the oracle covers every one of the 3×3 = 9 pairs exactly once.
+        let all = [Reproduced, NotReproduced, Inconclusive];
+        for a in all {
+            for b in all {
+                let hits = expected
+                    .iter()
+                    .filter(|(x, y, _)| *x == a && *y == b)
+                    .count();
+                assert_eq!(
+                    hits, 1,
+                    "verdict pair ({a:?}, {b:?}) must appear exactly once"
+                );
+            }
+        }
+        assert_eq!(expected.len(), 9, "no pairs beyond the 3×3 grid");
+        // The rule matches the oracle on every pair.
+        for (a, b, want) in expected {
+            assert_eq!(combine(*a, *b), *want, "combine({a:?}, {b:?})");
+        }
+    }
+
+    /// The rule is symmetric — neither subject is privileged in the combination.
+    #[test]
+    fn combine_is_symmetric() {
+        use Verdict::*;
+        let all = [Reproduced, NotReproduced, Inconclusive];
+        for a in all {
+            for b in all {
+                assert_eq!(combine(a, b), combine(b, a), "asymmetric at ({a:?}, {b:?})");
+            }
+        }
     }
 }
