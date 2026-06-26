@@ -7,7 +7,7 @@ tdd: advisory
 acs:
     - id: AC-1
       title: Strength gate driven by per-subject obligation spec
-      status: open
+      status: met
     - id: AC-2
       title: Canonicalize N=30 strength matches golden fixture
       status: open
