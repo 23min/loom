@@ -32,20 +32,8 @@ single-input goals before pre-registering.
 
 ## Acceptance criteria
 
-<!-- Candidate ACs; formalized via `aiwf add ac` at start-milestone. -->
-
-- Given a per-subject obligation spec over a named opaque function/predicate, the
-  gate emits per-obligation **exact/bound/free verdicts driven entirely by that
-  spec**, with no canonicalize obligation hardcoded in the strength path —
-  exercised by minimal fixtures covering the obligation **shapes the new subjects
-  need**: at least an **exclusion goal** (`!P` over a ground tuple) and a **bounded
-  quantifier over a finite datatype** (the FSM shapes), and a **unary opaque
-  predicate over a single value** (the prosey shape), proving the interface is
-  general beyond the canonicalize unary-function shape.
-- Re-running the generalized gate on the cached canonicalize N=30 generations
-  reproduces a **committed golden strength fixture** (the per-condition K/V/F
-  entailment counts and the width exact/bound/free distribution), diffed
-  mechanically; any changed verdict fails this AC.
+Tracked as `acs[]` in frontmatter (AC-1, AC-2); the full obligation detail lives
+under the per-AC sections at the foot of this spec.
 
 ## Constraints
 
@@ -101,5 +89,19 @@ single-input goals before pre-registering.
 
 ### AC-1 — Strength gate driven by per-subject obligation spec
 
+Given a per-subject obligation spec over a named opaque function/predicate, the
+gate emits per-obligation **exact/bound/free verdicts driven entirely by that
+spec**, with no canonicalize obligation hardcoded in the strength path. Exercised
+by minimal fixtures covering the obligation **shapes the new subjects need**: at
+least an **exclusion goal** (`!P` over a ground tuple), a **bounded quantifier
+over a finite datatype** (the FSM shapes), and a **unary opaque predicate over a
+single value** (the prosey shape) — proving the interface is general beyond the
+canonicalize unary-function shape.
+
 ### AC-2 — Canonicalize N=30 strength matches golden fixture
+
+Re-running the generalized gate on the cached canonicalize N=30 generations
+reproduces a **committed golden strength fixture** (the per-condition K/V/F
+entailment counts and the width exact/bound/free distribution), diffed
+mechanically; any changed verdict fails this AC.
 
