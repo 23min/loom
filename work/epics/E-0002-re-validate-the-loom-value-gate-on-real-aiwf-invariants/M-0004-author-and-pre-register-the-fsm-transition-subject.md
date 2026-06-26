@@ -78,19 +78,80 @@ per-AC sections at the foot of this spec.
 
 ## Work log
 
+All four ACs landed in the feat commit `22cd65e`; the wrap-side prose here is
+blessed separately via `aiwf edit-body`.
+
+### AC-1 — Gold FSM spec + reference impl verify
+
+Authored `fsm.dfy` (Epic + Milestone, transcribed from `transition.go`): `Kind`/
+`Status` datatypes, reference `IsLegal` predicate, gold `GoldSpec` lemma whose
+ensures are the obligations **L** (4 legal edges), **X_skip**, **X_cross**, **T**
+(Done/Cancelled terminality), **D** (one-directionality). `dafny verify fsm.dfy`
+passes; pinned by `fsm_gold_verifies`.
+
+### AC-2 — Mutant bank: gold kills full bank, isolating mutant per tell
+
+Authored `mutants-fsm/` (11 clause-isolated mutants). `fsm_gold_kills_full_mutant_bank`
+confirms the gold kills all 11; `fsm_mutants_are_clause_isolated` (#[ignore], 9×11
+Dafny sweep) confirms each mutant breaks **exactly** its mapped obligation and that
+the bank isolates **every** one of the 9 gold clauses (the G-0003 coverage guard).
+
+### AC-3 — Each obligation probes as isolable single-input goal via M-0003 gate
+
+`FSM_SUBJECT` (the gate's obligation list) + `fsm_obligations_probe_and_discriminate`:
+the full spec entails all obligations; a positive-only spec entails the legal edges
+but **none** of `{X_skip, X_cross, T1, T2, D}` (resolve-guarded) — the negative-space
+tell discriminates the two specs.
+
+### AC-4 — Committed pre-registration with falsifiable verdict mapping
+
+`prereg-fsm.md`: full obligation set, the obligation↔mutant map, the predicted tell
+(negative-space under-specification), strength thresholds, the falsifying outcome,
+and a **total, falsifiable** mapping of run observations → reproduced /
+not-reproduced / inconclusive (with the inconclusive boundary and the per-probe
+inconclusive-denominator rule pinned). Its commit SHA becomes a git ancestor of the
+M-0006 run commit.
+
 ## Decisions made during implementation
 
-- (none)
+- FSM slice fixed at **Epic + Milestone** (2 of 6 kinds) — enough to exercise
+  kind-dependence and all four obligation types without the full datatype; recorded
+  in `prereg-fsm.md` §1.
 
 ## Validation
 
+- `cargo test` — **14 passed, 2 ignored** (~40s). The FSM additions:
+  `fsm_gold_verifies`, `fsm_obligations_probe_and_discriminate`,
+  `fsm_gold_kills_full_mutant_bank` (default) and `fsm_mutants_are_clause_isolated`
+  (#[ignore], ~3 min, exact mutant→obligation mapping + coverage).
+- `dafny verify fsm.dfy` — 1 verified, 0 errors (AC-1).
+- `cargo clippy` / `cargo fmt --check` — no new warnings or drift; the diff is
+  **additive-only** (no reformatting of pre-existing canonicalize/run code).
+
 ## Deferrals
 
-- (none)
+- (none) — M-0006 promotes `FSM_SUBJECT` into the production run path and authors
+  the runtime two-arm prompts (the prompt templates are canonicalize-specific);
+  that is M-0006's planned scope, not deferred M-0004 work.
 
 ## Reviewer notes
 
-- (none)
+- **Independent two-lens review (wrap step 2):** code-quality (`wf-review-code`) →
+  **approve** (all ACs verified by running; transcription faithful to
+  `transition.go`; mutant→obligation map reproduced byte-for-byte; diff
+  additive-only). Design (`wf-rethink`) → **refine** (sound). Four non-blocking
+  findings were applied in-milestone: (a) added L2/L3 to `FSM_SUBJECT` so the
+  instrument measures all four legal edges the pre-reg names (single source of
+  truth); (b) the isolation test now asserts the **exact** mutant→obligation
+  mapping + full coverage, not just cardinality — pinning the prereg §3 table and
+  mechanizing the G-0003 guard; (c) pinned the per-probe inconclusive-denominator
+  rule in the pre-reg so entailment rates are a deterministic function of raw probe
+  outcomes (no post-hoc latitude); (d) fixed a garbled `mt3.dfy` comment.
+- `FSM_SUBJECT` lives in the `#[cfg(test)]` module (it is only exercised by M-0004's
+  probe test); M-0006 promotes it to production when wiring the run path.
+- The per-subject verdict is pre-registered on `opus-4.8` (strongest M-0002 effect);
+  there is intentionally no model fallback — opus under-production → inconclusive,
+  which M-0007's combination rule handles.
 
 ### AC-1 — Gold FSM spec + reference impl verify
 
