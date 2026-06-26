@@ -1,0 +1,56 @@
+Looking at this contract, I need to capture:
+
+1. Kind never changes
+2. Value never changes
+3. Result width is at least PAD (4)
+4. The result is canonical (already-canonical input is a no-op)
+5. The result is wellformed
+6. Width is exactly max(PAD, original digits needed) — width changes only to reach the minimum
+
+Let me work through the precise behavior:
+
+- If `width >= 4`: return unchanged.
+- If `width < 4`: pad to width 4 (minimum 4 digits).
+
+The result width should be `max(x.width, PAD)`. This works because:
+- If `x.width >= PAD`, result width = `x.width` (unchanged).
+- If `x.width < PAD`, result width = `PAD` (= 4).
+
+This is also consistent: since `Wellformed(x)` gives `x.width >= NumDigits(x.value)`, padding to width `max(x.width, PAD)` keeps it wellformed.
+
+```dafny
+function Canonicalize(x: Id): Id
+{
+  if x.width >= PAD then x
+  else Id(x.kind, x.value, PAD)
+}
+```
+
+**(b) The lemma's `ensures` clauses:**
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures Canonicalize(x).kind == x.kind                      // kind never changes
+  ensures Canonicalize(x).value == x.value                    // value never changes
+  ensures Canonicalize(x).width == if x.width >= PAD then x.width else PAD
+                                                              // exact resulting width
+  ensures Canonicalize(x).width >= PAD                        // at least minimum width
+  ensures Wellformed(Canonicalize(x))                         // result is wellformed
+  ensures Canonicalize(x) == Canonicalize(Canonicalize(x))   // canonicalization is idempotent
+{ }
+```
+
+**Why these are precise and complete:**
+
+- **`kind == x.kind`** and **`value == x.value`**: these pin down that canonicalization *never changes which entity the id refers to* — only display width.
+
+- **`width == if x.width >= PAD then x.width else PAD`**: this is the key exactness clause. It says the width is left unchanged when already ≥ 4 (the "returned unchanged" / no-op-when-canonical requirement), and otherwise becomes exactly 4 (the minimum). Without this exact equation, a spec saying only `width >= PAD` would wrongly permit, e.g., always returning width 10 or arbitrarily inflating already-wide ids.
+
+- **`width >= PAD`**: redundant given the exact clause, but states the headline "minimum of 4 digits" guarantee directly.
+
+- **`Wellformed(Canonicalize(x))`**: the output must still be able to hold its value (padding only adds leading zeros, never truncates).
+
+- **Idempotence** (`Canonicalize(x) == Canonicalize(Canonicalize(x))`): captures "canonicalizing an already-canonical id is a no-op." Combined with the exact-width clause this guarantees a canonical fixpoint.
+
+The exact-width clause is the heart of completeness: it forces the *minimum* (not maximum) semantics, forbids touching already-canonical ids, and—together with kind/value preservation—fully determines the output for every wellformed input.

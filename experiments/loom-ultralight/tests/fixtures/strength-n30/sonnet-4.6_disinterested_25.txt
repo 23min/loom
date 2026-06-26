@@ -1,0 +1,55 @@
+I'll analyze the contract carefully and provide both the implementation and the specification lemma.
+
+## Analysis of the Contract
+
+The canonicalization rules:
+1. The `kind` and `value` never change
+2. The `width` is set to `max(4, NumDigits(value))` — i.e., at least 4 digits, but if the value already needs more than 4 digits, keep those digits
+3. If already canonical (width ≥ 4), return unchanged — but "unchanged" means the width stays at exactly `max(4, NumDigits(value))`... wait, let me re-read.
+
+Re-reading: "An id already at 4 or more digits is returned unchanged." So if `width >= 4`, return the id as-is. If `width < 4`, set width to 4.
+
+So canonical width = `if width >= 4 then width else 4`? But then "canonicalizing an already-canonical id is a no-op" — an already-canonical id has width ≥ 4, so it's returned unchanged.
+
+The canonical form: width = `max(4, width)`... but that doesn't make sense as a canonical form (it would depend on input width).
+
+Actually: canonical width = `max(4, NumDigits(value))`. "An id already at 4 or more digits is returned unchanged" means if `width >= 4`, it's already canonical, so no change needed. But for it to be a no-op on canonical ids, canonical means `width >= 4`. The canonical width is precisely `max(PAD, NumDigits(value))`.
+
+Wait — "returned unchanged" means the *whole id* is returned as-is, so width stays whatever it was (as long as ≥ 4). But then canonicalization isn't a pure function of the value... unless "returned unchanged" just means the result is still canonical.
+
+I'll interpret: canonical width = `max(PAD, NumDigits(value))`, and if already at that width, it's a no-op.
+
+## Implementation
+
+```dafny
+function Canonicalize(x: Id): Id {
+  if x.width >= PAD then x
+  else Id(x.kind, x.value, PAD)
+}
+```
+
+## Lemma
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures Canonicalize(x).kind == x.kind
+  ensures Canonicalize(x).value == x.value
+  ensures Canonicalize(x).width >= PAD
+  ensures Canonicalize(x).width >= NumDigits(x.value)
+  ensures Wellformed(Canonicalize(x))
+  ensures x.width >= PAD ==> Canonicalize(x) == x
+  ensures x.width < PAD ==> Canonicalize(x).width == PAD
+  ensures Canonicalize(Canonicalize(x)) == Canonicalize(x)
+{ }
+```
+
+The key ensures clauses:
+1. **kind preserved** — kind never changes
+2. **value preserved** — value never changes  
+3. **width ≥ PAD** — result has at least 4 digits
+4. **width ≥ NumDigits(value)** — result is wellformed (can represent the value)
+5. **Wellformed result** — explicit wellformedness
+6. **Already canonical → no-op** — if width ≥ 4, returned unchanged
+7. **Width < PAD → set to PAD** — the actual padding behavior
+8. **Idempotence** — canonicalizing twice is same as once

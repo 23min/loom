@@ -1,0 +1,43 @@
+I'll analyze the contract carefully:
+
+1. Canonicalization rewrites an id to canonical width: left-zero-padded to **minimum of 4 digits**
+2. An id already at 4 or more digits is returned unchanged
+3. Kind and numeric value never change
+4. Only width may change
+5. Canonicalizing an already-canonical id is a no-op
+
+## (a) Implementation
+
+```dafny
+function Canonicalize(x: Id): Id {
+  if x.width >= PAD then x
+  else Id(x.kind, x.value, PAD)
+}
+```
+
+## (b) Lemma with ensures clauses
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures Canonicalize(x).kind == x.kind
+  ensures Canonicalize(x).value == x.value
+  ensures Canonicalize(x).width >= PAD
+  ensures Canonicalize(x).width >= x.width
+  ensures x.width >= PAD ==> Canonicalize(x) == x
+  ensures x.width < PAD ==> Canonicalize(x).width == PAD
+  ensures Wellformed(Canonicalize(x))
+  ensures Canonicalize(Canonicalize(x)) == Canonicalize(x)
+{ }
+```
+
+**Explanation of each clause:**
+
+- `kind` is preserved — canonicalization never changes which kind of entity is referred to
+- `value` is preserved — the numeric value never changes
+- `width >= PAD` — the result always has at least 4 digits of display width
+- `width >= x.width` — width never shrinks (an id already wider than 4 stays that way)
+- `x.width >= PAD ==> result == x` — if already canonical (width ≥ 4), it's a no-op (identity)
+- `x.width < PAD ==> result.width == PAD` — if narrower than 4, width is set to exactly 4
+- `Wellformed(result)` — the output is wellformed (width can hold the value), preserved from input since value doesn't change and width only grows
+- `Canonicalize(Canonicalize(x)) == Canonicalize(x)` — idempotence: canonicalizing an already-canonical id is a no-op

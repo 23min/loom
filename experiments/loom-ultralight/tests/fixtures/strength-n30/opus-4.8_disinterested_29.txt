@@ -1,0 +1,28 @@
+```dafny
+function Canonicalize(x: Id): Id
+{
+  if x.width >= PAD then x
+  else Id(x.kind, x.value, PAD)
+}
+
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures Canonicalize(x).kind == x.kind
+  ensures Canonicalize(x).value == x.value
+  ensures Canonicalize(x).width == if x.width >= PAD then x.width else PAD
+  ensures Canonicalize(x).width >= PAD
+  ensures Wellformed(Canonicalize(x))
+  // idempotence: canonicalizing an already-canonical id is a no-op
+  ensures Canonicalize(Canonicalize(x)) == Canonicalize(x)
+{ }
+```
+
+**Explanation of the `ensures` clauses:**
+
+- `kind` and `value` never change — the canonical id refers to the same entity.
+- `width` is `x.width` if already ≥ 4 (returned unchanged), otherwise exactly `PAD` (left-zero-padded to a minimum of 4 digits).
+- The result width is always ≥ `PAD` (the canonical-width guarantee).
+- The result is `Wellformed` (its width can still hold its value).
+- Idempotence: canonicalizing an already-canonical id is a no-op.
+
+Note the `width` clause is the tight specification; the other clauses (`>= PAD`, `Wellformed`, idempotence) are derivable consequences included for completeness/auditing.

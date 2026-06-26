@@ -1,0 +1,42 @@
+Looking at this problem, I need to:
+
+1. Write `Canonicalize` that pads width to a minimum of 4.
+2. Write a `Spec` lemma whose `ensures` clauses my implementation satisfies.
+
+Let me reason about the implementation:
+- `kind` and `value` never change.
+- `width` becomes `max(width, 4)`, i.e., if `width < 4`, set to `4`, else unchanged.
+
+Here's my implementation and spec:
+
+```dafny
+function Canonicalize(x: Id): Id
+{
+  Id(x.kind, x.value, if x.width < PAD then PAD else x.width)
+}
+
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures Canonicalize(x).kind == x.kind
+  ensures Canonicalize(x).value == x.value
+  ensures Canonicalize(x).width >= PAD
+  ensures Canonicalize(x).width >= x.width
+  ensures Canonicalize(x).width == if x.width < PAD then PAD else x.width
+  ensures Wellformed(Canonicalize(x))
+  ensures Canonicalize(Canonicalize(x)) == Canonicalize(x)
+{ }
+```
+
+Let me verify each `ensures` against the implementation:
+
+- `kind == x.kind`: directly holds (constructor uses `x.kind`). ✓
+- `value == x.value`: directly holds. ✓
+- `width >= PAD`: if `x.width < PAD` then result is `PAD >= PAD`; else result is `x.width >= PAD`. ✓
+- `width >= x.width`: if `x.width < PAD` then `PAD > x.width`; else `x.width >= x.width`. ✓
+- `width == if x.width < PAD then PAD else x.width`: definitionally true. ✓
+- `Wellformed(Canonicalize(x))`: need `result.width >= NumDigits(value)`. We have `Wellformed(x)` so `x.width >= NumDigits(x.value)`, and `result.width >= x.width`, so `result.width >= NumDigits(x.value)`. Dafny can chain this from the `>= x.width` reasoning. ✓
+- Idempotence `Canonicalize(Canonicalize(x)) == Canonicalize(x)`: inner result has width `>= PAD`, so outer leaves it unchanged. ✓
+
+These should all verify automatically. The `Wellformed` and idempotence cases follow from the monotonicity facts Dafny can derive within the function unfolding.
+
+This is my final answer above.

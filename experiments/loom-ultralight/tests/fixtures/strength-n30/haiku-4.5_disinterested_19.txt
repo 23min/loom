@@ -1,0 +1,33 @@
+# Solution
+
+## (a) Implementation of `Canonicalize`
+
+```dafny
+function Canonicalize(x: Id): Id {
+  Id(x.kind, x.value, if x.width < PAD then PAD else x.width)
+}
+```
+
+The function preserves the kind and value, and sets the width to the maximum of the current width and PAD (4).
+
+## (b) Specification Lemma `Spec`
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures var y := Canonicalize(x); 
+          y.kind == x.kind &&
+          y.value == x.value &&
+          y.width >= PAD &&
+          y.width >= NumDigits(y.value) &&
+          (x.width >= PAD ==> y.width == x.width) &&
+          Wellformed(y)
+{ }
+```
+
+This captures precisely:
+- **Kind and value preservation**: The kind and numeric value never change
+- **Minimum width of 4**: The canonical width is at least PAD
+- **Wellformedness**: The width remains sufficient to hold the numeric value
+- **Idempotence**: If already at or above 4 digits, the width is unchanged
+- **Output wellformedness**: The result is wellformed

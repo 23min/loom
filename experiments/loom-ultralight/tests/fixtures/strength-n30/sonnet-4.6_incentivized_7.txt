@@ -1,0 +1,79 @@
+Looking at this problem, I need to:
+
+1. Implement `Canonicalize` that pads the width to at least 4 digits
+2. Write a lemma `Spec` with `ensures` clauses that capture the behavior
+
+Let me think about what `Canonicalize` should do:
+- Keep `kind` and `value` the same
+- Set `width` to `max(4, x.width)` - wait, actually re-reading: "the numeric value is left-zero-padded to a minimum of 4 digits" and "An id already at 4 or more digits is returned unchanged"
+
+So the canonical width is `max(4, x.width)`.
+
+Wait, but "An id already at 4 or more digits is returned unchanged" - this means if width >= 4, keep it as-is. If width < 4, set width to 4. So canonical width = `if x.width >= 4 then x.width else 4` = `max(4, x.width)`.
+
+Now for the lemma `Spec`, I need to specify:
+1. The result has the same `kind` and `value`
+2. The result's `width` is at least `PAD` (4)
+3. If the input width is already >= PAD, width is unchanged
+4. If the input width < PAD, width becomes PAD
+5. The result is wellformed
+6. Canonicalizing an already-canonical id is a no-op
+
+Let me write this:
+
+```dafny
+function Canonicalize(x: Id): Id {
+  if x.width >= PAD then x
+  else Id(x.kind, x.value, PAD)
+}
+
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures var r := Canonicalize(x);
+    r.kind == x.kind &&
+    r.value == x.value &&
+    r.width >= PAD &&
+    r.width >= x.width &&
+    (x.width >= PAD ==> r == x) &&
+    Wellformed(r) &&
+    Canonicalize(r) == r
+{ }
+```
+
+Let me verify each ensures clause:
+1. `r.kind == x.kind` - trivially true from both branches
+2. `r.value == x.value` - trivially true
+3. `r.width >= PAD` - if x.width >= PAD, r.width = x.width >= PAD; else r.width = PAD
+4. `r.width >= x.width` - if x.width >= PAD, r = x so r.width = x.width; else r.width = PAD >= x.width (since x.width < PAD = 4, x.width <= 3 < 4)
+5. `x.width >= PAD ==> r == x` - trivially true from first branch
+6. `Wellformed(r)` - r.width >= PAD >= NumDigits(r.value)? Not necessarily... we need r.width >= NumDigits(r.value). Since r.value = x.value and r.width >= x.width >= NumDigits(x.value) = NumDigits(r.value). This holds!
+7. `Canonicalize(r) == r` - r.width >= PAD in both cases, so Canonicalize(r) = r. ✓
+
+The `Wellformed(r)` proof: r.width >= x.width (shown above) and x.width >= NumDigits(x.value) (from Wellformed(x)), so r.width >= NumDigits(x.value) = NumDigits(r.value). Dafny should be able to verify this automatically.
+
+```dafny
+const PAD: nat := 4
+
+function NumDigits(value: nat): nat { if value < 10 then 1 else 1 + NumDigits(value / 10) }
+
+datatype Id = Id(kind: string, value: nat, width: nat)
+
+predicate Wellformed(x: Id) { x.width >= NumDigits(x.value) }
+
+function Canonicalize(x: Id): Id {
+  if x.width >= PAD then x
+  else Id(x.kind, x.value, PAD)
+}
+
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures var r := Canonicalize(x);
+    r.kind == x.kind &&
+    r.value == x.value &&
+    r.width >= PAD &&
+    r.width >= x.width &&
+    (x.width >= PAD ==> r == x) &&
+    Wellformed(r) &&
+    Canonicalize(r) == r
+{ }
+```

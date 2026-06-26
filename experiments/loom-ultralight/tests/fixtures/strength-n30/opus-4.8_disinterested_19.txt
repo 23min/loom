@@ -1,0 +1,43 @@
+## (a) Implementation
+
+```dafny
+function Canonicalize(x: Id): Id
+{
+  if x.width >= PAD then x
+  else Id(x.kind, x.value, PAD)
+}
+```
+
+## (b) Lemma specification
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures
+    // kind never changes
+    Canonicalize(x).kind == x.kind &&
+    // numeric value never changes (same entity)
+    Canonicalize(x).value == x.value &&
+    // result width is at least PAD (the minimum)
+    Canonicalize(x).width >= PAD &&
+    // result is canonical: width is exactly PAD, unless the value
+    // genuinely needs more digits (already >= PAD wide)
+    Canonicalize(x).width == (if x.width >= PAD then x.width else PAD) &&
+    // result is wellformed
+    Wellformed(Canonicalize(x)) &&
+    // already-canonical ids are returned unchanged (no-op)
+    (x.width >= PAD ==> Canonicalize(x) == x) &&
+    // canonicalization is idempotent
+    Canonicalize(Canonicalize(x)) == Canonicalize(x)
+{ }
+```
+
+### Notes on completeness
+
+- **`kind`/`value` preserved**: the two equalities pin down that canonicalization never changes which entity the id refers to.
+- **Minimum, not maximum**: `width >= PAD` plus the exact-value clause `width == (if x.width >= PAD then x.width else PAD)` together force padding *up* to 4 only when narrower, and leave already-wide ids untouched (4 is a minimum).
+- **No-op on canonical input**: `x.width >= PAD ==> Canonicalize(x) == x` captures that an id already at width ≥ 4 is returned unchanged.
+- **Idempotence**: canonicalizing an already-canonical id is a no-op, made explicit via the idempotence clause.
+- **Wellformedness preserved**: the result can still hold its value.
+
+The exact-width clause alone determines the full output `Id` (combined with the kind/value preservation), so the spec is both precise and complete; the remaining clauses are entailed consequences stated explicitly for auditability.

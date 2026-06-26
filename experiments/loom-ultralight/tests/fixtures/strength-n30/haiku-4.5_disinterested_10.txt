@@ -1,0 +1,54 @@
+Looking at this problem, I need to:
+
+1. **Implement `Canonicalize`**: Rewrite the width to be at least `PAD` (4), left-zero-padding the numeric value
+2. **Write `ensures` clauses for `Spec`**: Capture the complete contract of canonicalization
+
+Let me analyze the requirements:
+- The kind and numeric value never change
+- Width becomes `max(current_width, PAD)`
+- Canonicalizing an already-canonical id is a no-op
+- Only the width can change (display only)
+
+## Part (a): Implementation
+
+```dafny
+function Canonicalize(x: Id): Id
+  requires Wellformed(x)
+{
+  Id(x.kind, x.value, if x.width < PAD then PAD else x.width)
+}
+```
+
+## Part (b): Lemma specification
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures var c := Canonicalize(x); (
+    // Kind and value are preserved
+    c.kind == x.kind &&
+    c.value == x.value &&
+    // Width is at least PAD
+    c.width >= PAD &&
+    // Width doesn't shrink (monotonicity)
+    c.width >= x.width &&
+    // If already canonical, unchanged
+    (x.width >= PAD ==> c == x) &&
+    // The canonical form is minimal (no smaller width works)
+    (c.width > PAD ==> x.width > PAD) &&
+    // Result is wellformed
+    Wellformed(c) &&
+    // Idempotent: canonicalizing again gives the same result
+    Canonicalize(c) == c
+  )
+{ }
+```
+
+The ensures clauses capture:
+1. **Preservation**: kind and value never change
+2. **Minimum width**: canonical width is at least `PAD`
+3. **Monotonicity**: width never decreases
+4. **Idempotence**: already-canonical ids are unchanged (if width ≥ PAD, unchanged)
+5. **Minimality**: if canonical width is `PAD`, original must have been < PAD
+6. **Wellformedness**: the result is always wellformed
+7. **No-op on re-canonicalization**: applying it twice is same as once

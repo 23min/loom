@@ -1,0 +1,44 @@
+Looking at this problem, I need to:
+
+1. **Implement `Canonicalize`**: Rewrite the id to have width of at least 4 digits, but keep kind and value unchanged.
+
+2. **Specify `Spec` with ensures clauses**: Capture what canonicalization guarantees about the relationship between input and output.
+
+## Part (a): Implementation
+
+```dafny
+function Canonicalize(x: Id): Id {
+  Id(x.kind, x.value, if x.width < PAD then PAD else x.width)
+}
+```
+
+The logic:
+- Keep `kind` and `value` unchanged
+- Set `width` to `max(x.width, PAD)` which is `PAD` if `x.width < PAD`, otherwise `x.width`
+
+## Part (b): Specification
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures var y := Canonicalize(x); 
+          y.kind == x.kind &&
+          y.value == x.value &&
+          y.width >= PAD &&
+          (x.width >= PAD ==> y.width == x.width) &&
+          Wellformed(y)
+{ }
+```
+
+The ensures clauses state:
+1. **Kind is preserved**: `y.kind == x.kind`
+2. **Value is preserved**: `y.value == x.value`
+3. **Canonical form**: `y.width >= PAD` (at least 4 digits)
+4. **Idempotence**: If input is already canonical (`x.width >= PAD`), output width is unchanged (`y.width == x.width`)
+5. **Output is wellformed**: `Wellformed(y)` (the width can hold the value)
+
+These clauses together precisely capture:
+- Canonicalization never changes kind or value (which entity is referred to)
+- Canonicalization ensures minimum width of 4
+- Already-canonical ids remain unchanged (no-op)
+- The result is always a valid id

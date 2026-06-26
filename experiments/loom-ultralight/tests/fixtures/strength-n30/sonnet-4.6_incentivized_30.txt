@@ -1,0 +1,83 @@
+Looking at this problem, I need to:
+
+1. Implement `Canonicalize(x: Id): Id` that zero-pads the width to at least 4 digits
+2. Write a lemma `Spec` with `ensures` clauses that capture the specification
+
+Let me think about what canonicalization does:
+- Kind stays the same
+- Value stays the same  
+- Width becomes `max(4, NumDigits(value))` — but actually, re-reading: "the numeric value is left-zero-padded to a minimum of 4 digits. An id already at 4 or more digits is returned unchanged."
+
+Wait, "returned unchanged" means if width >= 4 already, we return the id as-is. So the new width is `max(4, x.width)`.
+
+Actually let me re-read: "An id already at 4 or more digits is returned unchanged" — this means if width >= 4, return x unchanged. Otherwise set width to 4.
+
+So `Canonicalize(x) = if x.width >= 4 then x else Id(x.kind, x.value, 4)`.
+
+Now for the `ensures` clauses of `Spec`:
+1. Kind is preserved: `Canonicalize(x).kind == x.kind`
+2. Value is preserved: `Canonicalize(x).value == x.value`
+3. Width is at least 4: `Canonicalize(x).width >= 4`
+4. If already canonical (width >= 4), it's a no-op: `x.width >= 4 ==> Canonicalize(x) == x`
+5. The result is wellformed: `Wellformed(Canonicalize(x))`
+6. Idempotent: `Canonicalize(Canonicalize(x)) == Canonicalize(x)`
+
+Let me also think about whether the result is wellformed. Since `Wellformed(x)` means `x.width >= NumDigits(x.value)`, and we only increase width, the result is also wellformed.
+
+For idempotency: after canonicalization, width >= 4, so canonicalizing again returns it unchanged.
+
+Let me write this:
+
+```dafny
+const PAD: nat := 4
+
+function NumDigits(value: nat): nat { if value < 10 then 1 else 1 + NumDigits(value / 10) }
+
+datatype Id = Id(kind: string, value: nat, width: nat)
+
+predicate Wellformed(x: Id) { x.width >= NumDigits(x.value) }
+
+function Canonicalize(x: Id): Id {
+  if x.width >= PAD then x else Id(x.kind, x.value, PAD)
+}
+
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures Canonicalize(x).kind == x.kind
+  ensures Canonicalize(x).value == x.value
+  ensures Canonicalize(x).width >= PAD
+  ensures x.width >= PAD ==> Canonicalize(x) == x
+  ensures Wellformed(Canonicalize(x))
+  ensures Canonicalize(Canonicalize(x)) == Canonicalize(x)
+{ }
+```
+
+Let me verify the wellformedness proof: `Wellformed(Canonicalize(x))` means `Canonicalize(x).width >= NumDigits(Canonicalize(x).value)`. Since `Canonicalize(x).value == x.value` and `Canonicalize(x).width >= x.width >= NumDigits(x.value) = NumDigits(Canonicalize(x).value)`, this holds. Dafny should be able to prove this automatically.
+
+For idempotency: `Canonicalize(x)` has width >= 4, so `Canonicalize(Canonicalize(x)) == Canonicalize(x)` by the definition.
+
+This looks correct. Let me finalize:
+
+```dafny
+const PAD: nat := 4
+
+function NumDigits(value: nat): nat { if value < 10 then 1 else 1 + NumDigits(value / 10) }
+
+datatype Id = Id(kind: string, value: nat, width: nat)
+
+predicate Wellformed(x: Id) { x.width >= NumDigits(x.value) }
+
+function Canonicalize(x: Id): Id {
+  if x.width >= PAD then x else Id(x.kind, x.value, PAD)
+}
+
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures Canonicalize(x).kind == x.kind
+  ensures Canonicalize(x).value == x.value
+  ensures Canonicalize(x).width >= PAD
+  ensures x.width >= PAD ==> Canonicalize(x) == x
+  ensures Wellformed(Canonicalize(x))
+  ensures Canonicalize(Canonicalize(x)) == Canonicalize(x)
+{ }
+```

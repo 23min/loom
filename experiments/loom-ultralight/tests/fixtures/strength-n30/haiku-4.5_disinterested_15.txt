@@ -1,0 +1,37 @@
+# Solution
+
+## (a) Implementation of `Canonicalize`
+
+```dafny
+function Canonicalize(x: Id): Id {
+  Id(x.kind, x.value, if x.width < PAD then PAD else x.width)
+}
+```
+
+The logic is straightforward: preserve the kind and value, but ensure the width is at least `PAD` (which is 4). If the current width is already 4 or more, leave it unchanged; otherwise, set it to 4.
+
+## (b) Complete `ensures` clauses for `Spec`
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures var c := Canonicalize(x); 
+          && c.kind == x.kind
+          && c.value == x.value
+          && c.width >= PAD
+          && c.width >= x.width
+          && Wellformed(c)
+          && (x.width >= PAD ==> c.width == x.width)
+{ }
+```
+
+**Explanation of each clause:**
+
+1. **`c.kind == x.kind`**: The kind is never changed.
+2. **`c.value == x.value`**: The numeric value is never changed.
+3. **`c.width >= PAD`**: The canonical width is always at least 4 digits.
+4. **`c.width >= x.width`**: Canonicalization never shrinks the width (monotonicity).
+5. **`Wellformed(c)`**: The result is always wellformed.
+6. **`(x.width >= PAD ==> c.width == x.width)`**: If the input is already at canonical width (≥4), it is unchanged (idempotency).
+
+Together, these clauses precisely capture the contract: canonicalization pads to a minimum of 4 digits, preserves kind and value, and is idempotent on already-canonical ids.

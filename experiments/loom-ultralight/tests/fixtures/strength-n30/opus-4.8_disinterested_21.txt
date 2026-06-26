@@ -1,0 +1,65 @@
+Looking at this problem, I need to capture the contract precisely.
+
+## Analysis of the contract
+
+The canonicalization rules:
+1. **Width becomes at least 4**: value is left-zero-padded to a minimum of 4 digits.
+2. **Already ≥ 4 digits returned unchanged**: if width ≥ 4, no change.
+3. **Kind and value never change**.
+4. **Result is wellformed** (the width must hold the value).
+5. **Idempotent / no-op on canonical ids**: implied by the width rule.
+
+The resulting width: it must be at least 4, but also must hold the value (wellformedness), and it should not change a width that is already ≥ 4. So the canonical width is `max(x.width, 4)` — but we need to be careful: if `x.width >= 4` it's unchanged; if `x.width < 4`, the new width is 4 (since wellformed input with width < 4 has at most 4 digits... actually NumDigits could be up to... if width < 4, NumDigits(value) <= width < 4, so 4 suffices).
+
+The clean characterization of the canonical width: `if x.width >= PAD then x.width else PAD`, i.e. `max(x.width, PAD)`.
+
+## (a) Implementation
+
+```dafny
+function Canonicalize(x: Id): Id
+{
+  if x.width >= PAD then x
+  else Id(x.kind, x.value, PAD)
+}
+```
+
+## (b) Lemma ensures clauses
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures
+    // kind and value are never changed (same entity)
+    Canonicalize(x).kind == x.kind &&
+    Canonicalize(x).value == x.value &&
+
+    // the canonical width is at least the minimum PAD
+    Canonicalize(x).width >= PAD &&
+
+    // result is wellformed (width can hold the value)
+    Wellformed(Canonicalize(x)) &&
+
+    // ids already at >= 4 digits are returned unchanged;
+    // and the width is never grown beyond what is necessary
+    // (exactly PAD when below it, otherwise unchanged):
+    Canonicalize(x).width == (if x.width >= PAD then x.width else PAD) &&
+
+    // idempotence: canonicalizing a canonical id is a no-op
+    Canonicalize(Canonicalize(x)) == Canonicalize(x)
+{ }
+```
+
+## Justifying completeness
+
+Let me verify each part of the contract is pinned down by these clauses:
+
+- **"kind and value must never change"** → `kind == x.kind`, `value == x.value`. ✓
+- **"padded to a minimum of 4 digits"** → `width >= PAD`. ✓
+- **"already at 4 or more digits returned unchanged"** → for `x.width >= PAD`, the width clause gives `width == x.width`; combined with same kind/value this means the whole `Id` is unchanged. ✓
+- **"4 is a minimum, not a maximum"** → the `if x.width >= PAD then x.width` branch preserves larger widths rather than truncating. ✓
+- **Result must be a valid id holding the value** → `Wellformed(Canonicalize(x))`. ✓
+- **"no-op on canonical ids" / idempotence** → explicit idempotence clause (also follows from the width clause). ✓
+
+The width clause `Canonicalize(x).width == (if x.width >= PAD then x.width else PAD)` is the key one — it **uniquely determines** the output width for every input, so together with the kind/value clauses the entire output `Id` is uniquely specified, making the spec complete (no underspecification).
+
+Note that `Wellformed` in the `else` branch (width set to `PAD == 4`) holds because the precondition `Wellformed(x)` with `x.width < 4` gives `NumDigits(x.value) <= x.width < 4 = PAD`, so the new width `PAD >= NumDigits(value)`.

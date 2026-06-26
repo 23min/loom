@@ -1,0 +1,37 @@
+# Solution
+
+## (a) Implementation
+
+```dafny
+function Canonicalize(x: Id): Id {
+  Id(x.kind, x.value, max(x.width, PAD))
+}
+```
+
+where `max` is the standard maximum function (or inline as `if x.width < PAD then PAD else x.width`).
+
+## (b) Specification Lemma
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures var y := Canonicalize(x); 
+          y.kind == x.kind &&
+          y.value == x.value &&
+          y.width >= PAD &&
+          y.width >= NumDigits(y.value) &&
+          Wellformed(y) &&
+          (x.width >= PAD ==> y.width == x.width) &&
+          (x.width < PAD ==> y.width == PAD)
+{ }
+```
+
+**Explanation:**
+
+The ensures clauses capture that:
+1. **Kind and value never change** (`y.kind == x.kind && y.value == x.value`)
+2. **Width is at least the minimum** (`y.width >= PAD`)
+3. **Width can hold the value** (`y.width >= NumDigits(y.value)`)
+4. **Result is wellformed** (`Wellformed(y)`)
+5. **Idempotence**: Already-canonical ids are unchanged (`x.width >= PAD ==> y.width == x.width`)
+6. **Below-minimum ids are padded to exactly 4** (`x.width < PAD ==> y.width == PAD`)

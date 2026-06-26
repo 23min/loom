@@ -1,0 +1,39 @@
+Looking at this contract, I need to capture:
+
+1. The kind never changes
+2. The numeric value never changes
+3. The result width is the value left-zero-padded to a **minimum of 4 digits**: `max(PAD, NumDigits(value))`
+4. The result is wellformed
+5. Idempotence/no-op for already-canonical ids is implied by the width formula (the width is determined solely by value)
+
+Here is the implementation and spec:
+
+```dafny
+function Canonicalize(x: Id): Id
+{
+  // width becomes at least PAD, but never less than what's needed to hold the value
+  var w := if x.width >= PAD then x.width else PAD;
+  Id(x.kind, x.value, w)
+}
+
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures Canonicalize(x).kind == x.kind          // kind never changes
+  ensures Canonicalize(x).value == x.value        // numeric value never changes
+  ensures Wellformed(Canonicalize(x))             // result can hold its value
+  ensures Canonicalize(x).width >= PAD            // canonical width is at least the minimum
+  ensures x.width >= PAD ==> Canonicalize(x) == x // already >= 4 digits: returned unchanged
+  ensures Canonicalize(x).width ==
+            (if x.width >= PAD then x.width else PAD)  // exact width: pad to minimum 4, else unchanged
+{ }
+```
+
+### Explanation of completeness
+
+- **`kind == x.kind`, `value == x.value`** — the two invariants the contract says must *never* change.
+- **`width >= PAD`** — the canonical form must have a minimum of 4 digits of width.
+- **`x.width >= PAD ==> Canonicalize(x) == x`** — "An id already at 4 or more digits is returned unchanged." Combined with the value being preserved, this also gives the **no-op on already-canonical ids**: a canonical id has `width >= PAD`, so canonicalizing it again returns it unchanged.
+- **The exact width clause** — pins the result width down completely so the spec is not under-constrained: it is `x.width` when already ≥ 4, otherwise exactly `PAD`. This rules out, e.g., over-padding to a larger width.
+- **`Wellformed(Canonicalize(x))`** — the result is still wellformed (its width holds its value). This follows because `Wellformed(x)` gives `x.width >= NumDigits(x.value)`, and the new width is `max(x.width, PAD) >= NumDigits(x.value)`.
+
+One subtlety worth noting: the contract phrases canonical width as "value padded to a minimum of 4 digits," i.e. `max(PAD, NumDigits(value))`. Because the input is required `Wellformed` (`x.width >= NumDigits(x.value)`), `max(x.width, PAD)` equals `max(NumDigits(x.value), PAD)` whenever `x.width == NumDigits(x.value)`, and for over-wide inputs (`width > NumDigits(value)`, still `>= PAD` only if ≥ 4) the "returned unchanged" rule governs. The spec above keys the width off `x.width` to honor the literal "returned unchanged at ≥ 4 digits" rule exactly.

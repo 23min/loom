@@ -1,0 +1,60 @@
+Looking at the specification, I need to:
+
+1. **Implement `Canonicalize`**: Rewrite the id to have width of at least 4 digits, keeping kind and value unchanged
+2. **Write `ensures` clauses for `Spec`**: Capture the complete contract of canonicalization
+
+Let me analyze the requirements:
+- Canonicalization changes only the width, not the kind or value
+- The new width is `max(4, NumDigits(value))` (minimum 4 digits, or however many are needed)
+- Canonicalizing an already-canonical id is a no-op
+- The result must be wellformed
+
+## (a) Implementation
+
+```dafny
+function Canonicalize(x: Id): Id
+{
+  Id(x.kind, x.value, if x.width >= PAD then x.width else PAD)
+}
+```
+
+Actually, looking more carefully: we want the canonical width to be the **minimum of 4 digits**, but if the value needs more digits, we use that. So:
+
+```dafny
+function Canonicalize(x: Id): Id
+{
+  Id(x.kind, x.value, if NumDigits(x.value) < PAD then PAD else NumDigits(x.value))
+}
+```
+
+Or more concisely:
+
+```dafny
+function Canonicalize(x: Id): Id
+{
+  Id(x.kind, x.value, if PAD > NumDigits(x.value) then PAD else NumDigits(x.value))
+}
+```
+
+## (b) Specification Lemma
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures var c := Canonicalize(x); 
+    c.kind == x.kind &&
+    c.value == x.value &&
+    c.width >= PAD &&
+    c.width >= NumDigits(c.value) &&
+    (x.width >= PAD ==> c.width == x.width) &&
+    Wellformed(c)
+{ }
+```
+
+The ensures clauses capture:
+1. **`c.kind == x.kind`**: Kind never changes
+2. **`c.value == x.value`**: Numeric value never changes
+3. **`c.width >= PAD`**: Canonical width is at least 4
+4. **`c.width >= NumDigits(c.value)`**: The width is sufficient to hold the value (wellformedness)
+5. **`x.width >= PAD ==> c.width == x.width`**: Already-canonical ids are unchanged (idempotence)
+6. **`Wellformed(c)`**: Result is wellformed

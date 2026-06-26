@@ -1,0 +1,35 @@
+# Solution
+
+## (a) Implementation of `Canonicalize`
+
+```dafny
+function Canonicalize(x: Id): Id {
+  Id(x.kind, x.value, max(PAD, NumDigits(x.value)))
+}
+```
+
+## (b) `ensures` clauses for `Spec`
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures var c := Canonicalize(x); c.kind == x.kind
+  ensures var c := Canonicalize(x); c.value == x.value
+  ensures var c := Canonicalize(x); c.width >= PAD
+  ensures var c := Canonicalize(x); c.width >= NumDigits(c.value)
+  ensures var c := Canonicalize(x); c.width == max(PAD, NumDigits(x.value))
+  ensures Wellformed(Canonicalize(x))
+  ensures x.width >= PAD ==> Canonicalize(x) == x
+{ }
+```
+
+**Explanation:**
+
+The specification captures:
+1. **Kind unchanged**: The kind is preserved (canonicalization only affects width)
+2. **Value unchanged**: The numeric value is preserved
+3. **Minimum width guarantee**: The canonical width is at least 4 digits (PAD)
+4. **Wellformedness preserved**: The width can hold the numeric value
+5. **Exact width formula**: The canonical width is the maximum of 4 and the digits needed
+6. **Output is wellformed**: The result satisfies the wellformedness predicate
+7. **Idempotence**: If already at 4+ digits, canonicalization is a no-op

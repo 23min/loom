@@ -1,0 +1,60 @@
+# Solution
+
+## (a) Implementation of Canonicalize
+
+```dafny
+function Canonicalize(x: Id): Id {
+  Id(x.kind, x.value, max(x.width, PAD))
+}
+```
+
+where `max(a, b) = if a >= b then a else b`.
+
+Alternatively, without a helper:
+
+```dafny
+function Canonicalize(x: Id): Id {
+  Id(x.kind, x.value, if x.width >= PAD then x.width else PAD)
+}
+```
+
+## (b) Ensures clauses for Spec
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures var y := Canonicalize(x); 
+          y.kind == x.kind
+  ensures var y := Canonicalize(x); 
+          y.value == x.value
+  ensures var y := Canonicalize(x); 
+          y.width >= PAD
+  ensures var y := Canonicalize(x); 
+          Wellformed(y)
+  ensures var y := Canonicalize(x); 
+          (x.width >= PAD ==> y.width == x.width)
+  ensures var y := Canonicalize(x); 
+          (x.width < PAD ==> y.width == PAD)
+{ }
+```
+
+Or equivalently, written more concisely:
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures Canonicalize(x).kind == x.kind
+  ensures Canonicalize(x).value == x.value
+  ensures Canonicalize(x).width >= PAD
+  ensures Wellformed(Canonicalize(x))
+  ensures x.width >= PAD ==> Canonicalize(x).width == x.width
+  ensures x.width < PAD ==> Canonicalize(x).width == PAD
+{ }
+```
+
+**Key properties captured:**
+1. Kind and value are preserved (the entity never changes)
+2. Width becomes at least `PAD` (4 digits minimum)
+3. The result is wellformed
+4. Ids already at or above 4 digits are unchanged
+5. Ids below 4 digits are padded exactly to 4

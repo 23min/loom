@@ -1,0 +1,38 @@
+# Solution
+
+## (a) Implementation of Canonicalize
+
+```dafny
+function Canonicalize(x: Id): Id {
+  Id(x.kind, x.value, if x.width < PAD then PAD else x.width)
+}
+```
+
+**Explanation:** The canonical width is the maximum of the current width and PAD (which is 4). This ensures the width is always at least 4, while preserving widths that are already 4 or greater.
+
+## (b) Specification lemma
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures var c := Canonicalize(x); 
+    Wellformed(c) &&
+    c.kind == x.kind &&
+    c.value == x.value &&
+    c.width >= PAD &&
+    c.width >= x.width &&
+    (x.width >= PAD ==> c.width == x.width) &&
+    (forall y: Id :: Wellformed(y) && 
+      y.kind == x.kind && y.value == x.value && y.width >= PAD 
+      ==> c.width <= y.width)
+{ }
+```
+
+**Explanation of the ensures clauses:**
+1. `Wellformed(c)` — the result is well-formed
+2. `c.kind == x.kind` — kind is preserved
+3. `c.value == x.value` — numeric value is preserved
+4. `c.width >= PAD` — canonical width is at least 4
+5. `c.width >= x.width` — canonical width is at least as large as the original
+6. `(x.width >= PAD ==> c.width == x.width)` — if already canonical, it's unchanged
+7. The universal quantification — canonical width is the *minimum* width satisfying the constraints (uniqueness and minimality)

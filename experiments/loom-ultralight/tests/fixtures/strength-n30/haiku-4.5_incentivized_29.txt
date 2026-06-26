@@ -1,0 +1,39 @@
+Looking at this problem, I need to:
+
+1. Implement `Canonicalize` to pad the numeric value to at least 4 digits
+2. Write `ensures` clauses that specify the behavior
+
+Let me think through the requirements:
+- The kind and value never change
+- The width becomes `max(4, NumDigits(value))`
+- If already canonical, it's unchanged
+- The result must be wellformed
+
+Here's my solution:
+
+```dafny
+function Canonicalize(x: Id): Id {
+  Id(x.kind, x.value, if x.width < PAD then PAD else x.width)
+}
+
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures var c := Canonicalize(x);
+    c.kind == x.kind &&
+    c.value == x.value &&
+    c.width >= PAD &&
+    c.width >= NumDigits(x.value) &&
+    (x.width >= PAD ==> c.width == x.width) &&
+    Wellformed(c)
+{ }
+```
+
+The ensures clauses specify:
+1. `c.kind == x.kind` - kind never changes
+2. `c.value == x.value` - numeric value never changes
+3. `c.width >= PAD` - width is at least 4
+4. `c.width >= NumDigits(x.value)` - width can hold the value (wellformedness)
+5. `(x.width >= PAD ==> c.width == x.width)` - if already canonical, unchanged
+6. `Wellformed(c)` - result is wellformed
+
+The implementation uses a conditional: if the current width is less than `PAD` (4), set it to `PAD`; otherwise keep it unchanged. This ensures minimum padding while preserving already-wide ids.

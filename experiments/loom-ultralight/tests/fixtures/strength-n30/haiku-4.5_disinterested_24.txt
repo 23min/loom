@@ -1,0 +1,51 @@
+Looking at this problem, I need to:
+
+1. **Implement `Canonicalize`**: Rewrite the width to be at least `PAD` (4), leaving kind and value unchanged
+2. **Specify `Spec`**: Capture what canonicalization guarantees
+
+Let me work through the requirements:
+
+- Canonicalization pads to minimum 4 digits
+- Kind and value never change
+- Already-canonical ids are unchanged
+- Width only increases if needed (never decreases)
+
+## Part (a): Implementation
+
+```dafny
+function Canonicalize(x: Id): Id {
+  Id(x.kind, x.value, if x.width < PAD then PAD else x.width)
+}
+```
+
+The logic: if the current width is less than 4, use 4; otherwise keep the current width.
+
+## Part (b): Specification
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures var c := Canonicalize(x);
+    // Kind and value never change
+    c.kind == x.kind &&
+    c.value == x.value &&
+    // Width is at least PAD
+    c.width >= PAD &&
+    // Width never decreases
+    c.width >= x.width &&
+    // Width is canonical (minimum of 4 or already sufficient)
+    c.width == if x.width < PAD then PAD else x.width &&
+    // Canonical result is wellformed
+    Wellformed(c) &&
+    // Canonicalizing again is a no-op
+    Canonicalize(c) == c
+{ }
+```
+
+The ensures clauses capture:
+1. **Identity of kind and value** — these never change
+2. **Minimum width of 4** — canonical form requires at least `PAD` digits
+3. **Monotonicity** — width never decreases
+4. **Definition of canonical width** — exactly what the function computes
+5. **Wellformedness preserved** — the result can actually hold its value
+6. **Idempotence** — canonicalizing an already-canonical id changes nothing

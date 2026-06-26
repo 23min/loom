@@ -1,0 +1,98 @@
+Looking at this problem, I need to:
+
+1. **Implement `Canonicalize`**: Rewrite the id to have width `max(4, NumDigits(value))` while preserving kind and value.
+
+2. **Specify `Spec`**: Capture what canonicalization guarantees.
+
+Let me analyze the requirements:
+- The canonical width is the maximum of 4 and the minimum digits needed to represent the value
+- Kind and value never change
+- Only width changes
+- Canonicalizing an already-canonical id is a no-op
+
+## Part (a): Implementation
+
+```dafny
+function Canonicalize(x: Id): Id
+{
+  Id(x.kind, x.value, if x.width >= PAD then x.width else PAD)
+}
+```
+
+Wait, let me reconsider. The spec says "minimum of 4 digits" and "An id already at 4 or more digits is returned unchanged". This means:
+- If width < 4: pad to 4
+- If width >= 4: keep as is
+
+But actually, re-reading: "the numeric value is left-zero-padded to a minimum of 4 digits. An id already at 4 or more digits is returned unchanged". This means the canonical width should be `max(PAD, NumDigits(value))`.
+
+Let me reconsider once more. If an id is written as `E0042` (width 4, value 42), it should stay unchanged. If it's written as `E42` (width 2, value 42), it should become `E0042` (width 4). So the canonical width is indeed `max(4, NumDigits(value))`, but we need to ensure it's at least the width needed for the value.
+
+```dafny
+function Canonicalize(x: Id): Id
+{
+  Id(x.kind, x.value, if PAD > x.width then PAD else x.width)
+}
+```
+
+Hmm, but that's not quite right either. The canonical form should be `max(PAD, NumDigits(value))`. Let me think about what "unchanged" means: an id is unchanged if it's already canonical. So:
+
+```dafny
+function Canonicalize(x: Id): Id
+{
+  Id(x.kind, x.value, if x.width < PAD then PAD else x.width)
+}
+```
+
+## Part (b): Specification
+
+The ensures clauses should capture:
+1. Kind is unchanged
+2. Value is unchanged
+3. The new width is at least PAD
+4. The new width is at least NumDigits(value)
+5. The result is wellformed
+6. If the input width was already >= PAD, width is unchanged
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures var y := Canonicalize(x); 
+    y.kind == x.kind &&
+    y.value == x.value &&
+    y.width >= PAD &&
+    y.width >= NumDigits(x.value) &&
+    Wellformed(y) &&
+    (x.width >= PAD ==> y.width == x.width)
+{ }
+```
+
+Actually, I can simplify: if width >= PAD and we preserve width when width >= PAD, then the result width equals max(PAD, x.width). Let me make it more direct:
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures var y := Canonicalize(x);
+    y.kind == x.kind &&
+    y.value == x.value &&
+    y.width == (if x.width < PAD then PAD else x.width) &&
+    y.width >= PAD &&
+    Wellformed(y) &&
+    (x.width >= PAD ==> y.width == x.width) &&
+    (x.width < PAD ==> y.width == PAD)
+{ }
+```
+
+The last two ensures are somewhat redundant with the third, but they make the contract more explicit. Here's a cleaner version:
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures var y := Canonicalize(x);
+    y.kind == x.kind &&
+    y.value == x.value &&
+    y.width >= PAD &&
+    y.width >= NumDigits(x.value) &&
+    Wellformed(y) &&
+    (x.width >= PAD <==> y.width == x.width)
+{ }
+```

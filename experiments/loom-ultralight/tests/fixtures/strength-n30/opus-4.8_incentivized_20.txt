@@ -1,0 +1,39 @@
+```dafny
+const PAD: nat := 4
+
+function NumDigits(value: nat): nat { if value < 10 then 1 else 1 + NumDigits(value / 10) }
+
+datatype Id = Id(kind: string, value: nat, width: nat)
+
+predicate Wellformed(x: Id) { x.width >= NumDigits(x.value) }
+
+function Canonicalize(x: Id): Id
+{
+  Id(x.kind, x.value, if x.width >= PAD then x.width else PAD)
+}
+
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures Canonicalize(x).kind == x.kind
+  ensures Canonicalize(x).value == x.value
+  ensures Canonicalize(x).width >= PAD
+  ensures Canonicalize(x).width == if x.width >= PAD then x.width else PAD
+  ensures x.width >= PAD ==> Canonicalize(x) == x
+  ensures Wellformed(Canonicalize(x))
+  ensures Canonicalize(Canonicalize(x)) == Canonicalize(x)
+{ }
+```
+
+**Explanation of key choices:**
+
+- **Implementation:** The canonical width is `max(x.width, PAD)`. Since `PAD == 4`, an id already at width ≥ 4 keeps its width (returned unchanged), and a narrower id is widened to 4. Kind and value are copied verbatim, so the entity never changes.
+
+- **`ensures` clauses:**
+  - Kind and value are preserved.
+  - Width is always ≥ `PAD`.
+  - Width is exactly the max of the original and `PAD`.
+  - If already ≥ `PAD`, it's a no-op (`Canonicalize(x) == x`).
+  - The result is wellformed: this holds because `Canonicalize(x).width >= max(x.width, PAD) >= x.width >= NumDigits(x.value)`, and value is unchanged. Dafny discharges this from `Wellformed(x)`.
+  - Idempotence: canonicalizing twice equals canonicalizing once. After one application width ≥ PAD, so the second application is a no-op — Dafny verifies this by unfolding the `if`.
+
+All clauses follow directly from the structural definition, so verification succeeds without needing helper lemmas.

@@ -1,0 +1,34 @@
+```dafny
+function Canonicalize(x: Id): Id {
+  Id(x.kind, x.value, max(PAD, NumDigits(x.value)))
+}
+
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures var c := Canonicalize(x); 
+    c.kind == x.kind &&
+    c.value == x.value &&
+    c.width >= PAD &&
+    c.width >= NumDigits(x.value) &&
+    Wellformed(c) &&
+    (x.width >= PAD ==> c.width == x.width) &&
+    (x.width < PAD ==> c.width == PAD)
+{ }
+```
+
+**Explanation:**
+
+**(a) Implementation:**
+`Canonicalize` takes an id and returns a new id where:
+- The kind and value remain unchanged
+- The width is set to the maximum of `PAD` (4) and the minimum digits needed to represent the value (`NumDigits(x.value)`)
+
+This ensures the width is always at least 4 digits, but preserves wider widths when the value already requires more than 4 digits.
+
+**(b) Specification:**
+The ensures clauses capture that:
+1. `kind` and `value` never change (the id refers to the same entity)
+2. The result's width is at least `PAD` (minimum 4 digits)
+3. The result's width is sufficient for its value (wellformedness is preserved)
+4. If input is already at canonical width (≥ 4 digits), output width equals input width (idempotency)
+5. If input is sub-canonical (< 4 digits), output width is exactly `PAD` (padding happens)

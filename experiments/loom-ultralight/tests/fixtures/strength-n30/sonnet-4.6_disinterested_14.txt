@@ -1,0 +1,72 @@
+I'll analyze the contract carefully:
+
+1. Canonicalization sets width to `max(4, NumDigits(value))` — i.e., at least 4 digits, but if the value needs more digits, keep those.
+2. Kind and value never change.
+3. Already-canonical ids are unchanged (no-op).
+4. The result is wellformed.
+
+Let me think about what "canonical width" means precisely: it's `max(PAD, NumDigits(x.value))`. An id is canonical iff its width equals this value.
+
+**(a) Implementation:**
+
+```dafny
+function Canonicalize(x: Id): Id {
+  Id(x.kind, x.value, if x.width >= PAD then x.width else PAD)
+}
+```
+
+Wait — but that's not right. If width is already >= 4 we return unchanged, but "unchanged" means same width even if width > 4? Let me re-read.
+
+"An id already at 4 or more digits is returned unchanged" — so if width >= 4, return as-is. If width < 4, pad to 4.
+
+So canonical width = `if x.width >= PAD then x.width else PAD`. But that means the canonical form depends on the input width when >= 4, which seems odd. Let me re-read: "the numeric value is left-zero-padded to a **minimum of 4 digits**. An id already at 4 or more digits is returned unchanged."
+
+So the canonical width is `max(PAD, x.width)` — which simplifies to: if already >= 4, keep it; else set to 4.
+
+```dafny
+function Canonicalize(x: Id): Id {
+  Id(x.kind, x.value, if x.width >= PAD then x.width else PAD)
+}
+```
+
+**(b) Lemma `Spec`:**
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures Canonicalize(x).kind == x.kind
+  ensures Canonicalize(x).value == x.value
+  ensures Canonicalize(x).width >= PAD
+  ensures Canonicalize(x).width >= x.width
+  ensures Canonicalize(x).width == (if x.width >= PAD then x.width else PAD)
+  ensures Wellformed(Canonicalize(x))
+  ensures Canonicalize(Canonicalize(x)) == Canonicalize(x)
+{ }
+```
+
+Let me verify the idempotency: if we canonicalize twice, the second time `x.width >= PAD` (since first canonicalize ensures width >= PAD), so it returns unchanged. ✓
+
+The ensures about `width == (if x.width >= PAD then x.width else PAD)` captures the precise behavior. The other clauses capture completeness of the contract.
+
+**Final answer:**
+
+```dafny
+function Canonicalize(x: Id): Id {
+  Id(x.kind, x.value, if x.width >= PAD then x.width else PAD)
+}
+
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  // kind and value are never changed
+  ensures Canonicalize(x).kind == x.kind
+  ensures Canonicalize(x).value == x.value
+  // width is set to exactly max(PAD, x.width)
+  ensures Canonicalize(x).width == (if x.width >= PAD then x.width else PAD)
+  // corollaries: result meets minimum-4 requirement and is wellformed
+  ensures Canonicalize(x).width >= PAD
+  ensures Canonicalize(x).width >= x.width
+  ensures Wellformed(Canonicalize(x))
+  // idempotency: canonicalizing an already-canonical id is a no-op
+  ensures Canonicalize(Canonicalize(x)) == Canonicalize(x)
+{ }
+```

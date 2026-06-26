@@ -646,17 +646,130 @@ fn rescore(
     print_results(n, mutants.len(), &means, &table, runs_dir);
 }
 
-// Gold obligations, as goal expressions, for the structural strength measure.
-// Width is a two-rung ladder: a spec that entails the exact width *pins* it; one
-// that entails only the lower bound merely *bounds* it; one that entails neither
-// leaves it *free*. (C) measures spec strength directly — not via the mutant bank.
-const STRENGTH_GOALS: &[(&str, &str)] = &[
-    ("K", "Canonicalize(x).kind == x.kind"),
-    ("V", "Canonicalize(x).value == x.value"),
-    ("F", "Wellformed(Canonicalize(x))"),
-    ("W_exact", "Canonicalize(x).width == (if x.width >= PAD then x.width else PAD)"),
-    ("W_bound", "Canonicalize(x).width >= PAD"),
-];
+/// One structural-strength obligation, stated over the subject's opaque
+/// function/predicate. `Single` is an independent goal — the spec entails it or it
+/// doesn't. `Ladder` is a descending sequence of mutually-exclusive rungs: the
+/// first rung the spec entails wins, and an implicit `free` rung counts the specs
+/// that entail none. Each rung carries the output/JSON key it increments, so the
+/// aggregate shape is driven entirely by the subject — no obligation is hardcoded
+/// downstream of this list. (The canonicalize width axis is the motivating ladder:
+/// a spec that entails the exact width *pins* it, one that entails only the lower
+/// bound merely *bounds* it, one that entails neither leaves it *free*.)
+enum Obligation {
+    Single {
+        key: &'static str,
+        goal: &'static str,
+    },
+    Ladder {
+        rungs: &'static [(&'static str, &'static str)],
+        free_key: &'static str,
+    },
+}
+
+impl Obligation {
+    /// The output keys this obligation contributes, in declaration order — every
+    /// rung plus the ladder's `free` key. Used to give every subject row the same
+    /// columns (a key absent from the tally serializes as 0, never as a missing
+    /// field).
+    fn keys(&self) -> Vec<&'static str> {
+        match self {
+            Obligation::Single { key, .. } => vec![key],
+            Obligation::Ladder { rungs, free_key } => {
+                let mut k: Vec<&'static str> = rungs.iter().map(|(key, _)| *key).collect();
+                k.push(free_key);
+                k
+            }
+        }
+    }
+}
+
+/// A subject's structural-strength probe: the opaque declaration(s) the obligation
+/// goals are stated against, the probe lemma's binder + precondition, and the
+/// obligation list. A subject is implementation-independent — the function it
+/// probes is `{:opaque}`, so an entailment holds for *any* implementation.
+struct StrengthSubject {
+    /// Inserted verbatim after the shared preamble — the opaque function/predicate
+    /// (and any extra datatype/defs its obligation goals reference).
+    opaque_decls: &'static str,
+    /// The probe lemma's binder, e.g. `x: Id`. Empty for a ground subject whose
+    /// goals quantify internally or name constants.
+    binder: &'static str,
+    /// The probe lemma's precondition lines, e.g. `  requires Wellformed(x)`.
+    /// Empty when the subject has no standing precondition.
+    requires: &'static str,
+    obligations: &'static [Obligation],
+}
+
+impl StrengthSubject {
+    /// The full ordered output-key list — every obligation's keys, flattened. One
+    /// owner for the column set; the serializer and the table both derive from it.
+    /// Debug-asserts uniqueness so a future subject that reuses a JSON key fails
+    /// loudly instead of silently collapsing two columns into one tally bucket.
+    fn keys(&self) -> Vec<&'static str> {
+        let keys: Vec<&'static str> = self.obligations.iter().flat_map(|o| o.keys()).collect();
+        debug_assert!(
+            {
+                let mut sorted = keys.clone();
+                sorted.sort_unstable();
+                sorted.dedup();
+                sorted.len() == keys.len()
+            },
+            "duplicate obligation key in StrengthSubject"
+        );
+        keys
+    }
+}
+
+/// The id-canonicalization subject — the original hardcoded gate, re-expressed as
+/// a `StrengthSubject`. Its keys are exactly the committed golden fixture's fields
+/// (`results/strength-n30.json`), and `assemble_strength` against it reproduces the
+/// pre-generalization probe source byte-for-byte, so re-running the generalized
+/// gate on the canonicalize corpus reproduces the golden verdicts (M-0003 AC-2).
+const CANONICALIZE: StrengthSubject = StrengthSubject {
+    opaque_decls: "function {:opaque} Canonicalize(x: Id): Id { x }",
+    binder: "x: Id",
+    requires: "  requires Wellformed(x)",
+    obligations: &[
+        Obligation::Single {
+            key: "entails_kind",
+            goal: "Canonicalize(x).kind == x.kind",
+        },
+        Obligation::Single {
+            key: "entails_value",
+            goal: "Canonicalize(x).value == x.value",
+        },
+        Obligation::Single {
+            key: "entails_wellformed",
+            goal: "Wellformed(Canonicalize(x))",
+        },
+        Obligation::Ladder {
+            rungs: &[
+                (
+                    "width_exact",
+                    "Canonicalize(x).width == (if x.width >= PAD then x.width else PAD)",
+                ),
+                ("width_bound_only", "Canonicalize(x).width >= PAD"),
+            ],
+            free_key: "width_free",
+        },
+    ],
+};
+
+/// Walk a ladder's rungs in declaration order, returning the index of the first
+/// rung `probe` accepts, or `rungs.len()` (the implicit `free` rung) when none do.
+/// Probing short-circuits — a rung after the first hit is never probed, matching
+/// the original `if exact … else if bound … else free` cascade.
+fn classify_ladder<F: FnMut(&str) -> bool>(
+    rungs: &[(&'static str, &'static str)],
+    mut probe: F,
+) -> usize {
+    for (i, (_key, goal)) in rungs.iter().enumerate() {
+        if probe(goal) {
+            return i;
+        }
+    }
+    rungs.len()
+}
 
 /// Turn a candidate's `ensures` block into a `requires` block (assume the spec).
 /// Only the clause-leading `ensures` keyword is rewritten; multi-line continuation
@@ -672,52 +785,107 @@ fn ensures_to_requires(spec_ensures: &str) -> String {
         .join("\n")
 }
 
-/// Assemble a strength probe: the preamble + an OPAQUE (abstract) `Canonicalize`,
-/// the candidate spec assumed as `requires`, and one gold obligation as the goal.
-/// If Dafny proves the goal, the candidate spec logically entails that obligation
-/// for *any* implementation — an implementation-independent strength measure.
-fn assemble_strength(preamble: &str, assume: &str, goal: &str) -> String {
+/// Assemble a strength probe: the preamble + the subject's opaque declarations,
+/// the candidate spec assumed as `requires`, and one obligation goal as the proof
+/// target. If Dafny proves the goal, the candidate spec logically entails that
+/// obligation for *any* implementation of the opaque symbol — an
+/// implementation-independent strength measure.
+fn assemble_strength(
+    preamble: &str,
+    subject: &StrengthSubject,
+    assume: &str,
+    goal: &str,
+) -> String {
     format!(
-        "{preamble}\n\nfunction {{:opaque}} Canonicalize(x: Id): Id {{ x }}\n\n\
-         lemma Q(x: Id)\n  requires Wellformed(x)\n{assume}\n  ensures {goal}\n{{ }}\n"
+        "{preamble}\n\n{}\n\nlemma Q({})\n{}\n{assume}\n  ensures {goal}\n{{ }}\n",
+        subject.opaque_decls, subject.binder, subject.requires
     )
 }
 
-/// True iff the assumed spec entails `goal` (the probe verifies).
-fn entails(workdir: &Path, preamble: &str, assume: &str, goal: &str, timeout: Duration) -> bool {
+/// True iff the assumed spec entails `goal` for `subject` (the probe verifies).
+fn entails(
+    workdir: &Path,
+    preamble: &str,
+    subject: &StrengthSubject,
+    assume: &str,
+    goal: &str,
+    timeout: Duration,
+) -> bool {
     let f = workdir.join("_strength.dfy");
-    fs::write(&f, assemble_strength(preamble, assume, goal)).unwrap();
+    fs::write(&f, assemble_strength(preamble, subject, assume, goal)).unwrap();
     matches!(run_dafny(&f, timeout).0, Outcome::Verified)
 }
 
+/// Per model×condition aggregate. `counts` maps each obligation/rung key to the
+/// number of specs that entailed it; the key set is the subject's, so the tally is
+/// subject-agnostic. `specs` is the denominator (specs whose probe harness
+/// resolved); `probe_error` counts specs excluded because their probe did not even
+/// resolve.
 #[derive(Default)]
 struct StrengthTally {
-    specs: usize,       // specs whose probe harness compiled (the denominator)
-    probe_error: usize, // specs that failed to resolve under the probe (excluded)
-    k: usize,
-    v: usize,
-    f: usize,
-    w_exact: usize,
-    w_bound: usize, // bound-only (entails >= PAD but not exact)
-    w_free: usize,
+    specs: usize,
+    probe_error: usize,
+    counts: BTreeMap<&'static str, usize>,
 }
 
-/// Measure each cached spec's structural strength — for every gold obligation,
-/// does the spec logically entail it? — and aggregate per model × condition.
-fn strength(runs_dir: &Path, workdir: &Path, preamble: &str, timeout: Duration) {
-    if !runs_dir.is_dir() {
-        eprintln!("--strength: {} is not a directory", runs_dir.display());
-        std::process::exit(2);
+/// Probe one cached spec's strength under `subject`, mutating `tally`: the probe
+/// guard sets `probe_error`/`specs`, and each entailed obligation increments its
+/// key in `tally.counts`. Returns true when the probe resolved (spec counted),
+/// false when it was excluded as a probe error — the caller emits the audit line.
+fn probe_spec(
+    workdir: &Path,
+    preamble: &str,
+    subject: &StrengthSubject,
+    assume: &str,
+    timeout: Duration,
+    tally: &mut StrengthTally,
+) -> bool {
+    // Guard: if the probe harness does not even resolve (the spec references an
+    // undefined name, or its assumed clauses don't type-check), a trivially-true
+    // goal fails. Count it as a probe error and exclude it — do not misread it as
+    // a weak spec.
+    if !entails(workdir, preamble, subject, assume, "true", timeout) {
+        tally.probe_error += 1;
+        return false;
     }
-    let n: usize = std::env::var("LOOM_TRIALS")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(10);
-    println!("measuring structural spec strength in {}", runs_dir.display());
+    tally.specs += 1;
+    for ob in subject.obligations {
+        match ob {
+            Obligation::Single { key, goal } => {
+                if entails(workdir, preamble, subject, assume, goal, timeout) {
+                    *tally.counts.entry(key).or_default() += 1;
+                }
+            }
+            Obligation::Ladder { rungs, free_key } => {
+                // First rung the spec entails wins (exact pins; else bound-only);
+                // none ⇒ the implicit free rung.
+                let idx = classify_ladder(rungs, |g| {
+                    entails(workdir, preamble, subject, assume, g, timeout)
+                });
+                let key = if idx < rungs.len() {
+                    rungs[idx].0
+                } else {
+                    *free_key
+                };
+                *tally.counts.entry(key).or_default() += 1;
+            }
+        }
+    }
+    true
+}
 
-    let goal = |key: &str| STRENGTH_GOALS.iter().find(|(k, _)| *k == key).unwrap().1;
+/// Measure each cached spec's structural strength for `subject` and aggregate per
+/// model × condition. The Dafny-probing half of `--strength`, split from
+/// serialization so it can be driven against a frozen fixture corpus in tests (G1).
+fn compute_strength(
+    runs_dir: &Path,
+    workdir: &Path,
+    preamble: &str,
+    subject: &StrengthSubject,
+    timeout: Duration,
+    n: usize,
+) -> BTreeMap<(String, String), StrengthTally> {
     let mut tallies: BTreeMap<(String, String), StrengthTally> = BTreeMap::new();
-
     for (mlabel, _mid) in MODELS {
         for cond in CONDITIONS {
             let t = tallies
@@ -734,72 +902,497 @@ fn strength(runs_dir: &Path, workdir: &Path, preamble: &str, timeout: Duration) 
                     None => continue,
                 };
                 let assume = ensures_to_requires(&ensures);
-                // Guard: if the probe harness does not even resolve (the spec
-                // references an undefined name, or its assumed clauses don't
-                // type-check), a trivially-true goal fails. Count it as a probe
-                // error and exclude it — do not misread it as a weak spec.
-                if !entails(workdir, preamble, &assume, "true", timeout) {
-                    t.probe_error += 1;
-                    println!("[{mlabel}/{cond}/{trial}] probe error (did not resolve) — excluded");
-                    continue;
-                }
-                t.specs += 1;
-                if entails(workdir, preamble, &assume, goal("K"), timeout) {
-                    t.k += 1;
-                }
-                if entails(workdir, preamble, &assume, goal("V"), timeout) {
-                    t.v += 1;
-                }
-                if entails(workdir, preamble, &assume, goal("F"), timeout) {
-                    t.f += 1;
-                }
-                // Width ladder: exact pins it; else bound-only; else free.
-                if entails(workdir, preamble, &assume, goal("W_exact"), timeout) {
-                    t.w_exact += 1;
-                } else if entails(workdir, preamble, &assume, goal("W_bound"), timeout) {
-                    t.w_bound += 1;
+                if probe_spec(workdir, preamble, subject, &assume, timeout, t) {
+                    println!("[{mlabel}/{cond}/{trial}] strength probed");
                 } else {
-                    t.w_free += 1;
+                    println!("[{mlabel}/{cond}/{trial}] probe error (did not resolve) — excluded");
                 }
-                println!("[{mlabel}/{cond}/{trial}] strength probed");
             }
         }
     }
+    tallies
+}
 
-    let pct = |a: usize, b: usize| if b == 0 { 0.0 } else { 100.0 * a as f64 / b as f64 };
-    println!("\n=== structural spec strength (entailment of each gold obligation) ===");
-    println!(
-        "{:<12} {:<14} {:>6} {:>6} {:>6} {:>6} {:>6}   {:>7} {:>7} {:>6}",
-        "model", "condition", "specs", "K%", "V%", "F%", "errs", "W:exact", "W:bound", "W:free"
-    );
+/// Serialize the strength tallies to the result JSON shape: one row per
+/// model×condition carrying `specs`, `probe_errors`, and one field per subject key
+/// (a key absent from a tally serializes as 0, so every row has the same columns).
+/// Pure — no Dafny, no I/O — so the golden regression can diff it directly.
+fn strength_rows_json(
+    n: usize,
+    subject: &StrengthSubject,
+    tallies: &BTreeMap<(String, String), StrengthTally>,
+) -> serde_json::Value {
+    let keys = subject.keys();
     let mut rows = Vec::new();
     for (mlabel, _mid) in MODELS {
         for cond in CONDITIONS {
             let t = &tallies[&(mlabel.to_string(), cond.to_string())];
-            println!(
-                "{:<12} {:<14} {:>6} {:>5.0}% {:>5.0}% {:>5.0}% {:>6}   {:>7} {:>7} {:>6}",
-                mlabel,
-                cond,
-                t.specs,
-                pct(t.k, t.specs),
-                pct(t.v, t.specs),
-                pct(t.f, t.specs),
-                t.probe_error,
-                t.w_exact,
-                t.w_bound,
-                t.w_free
-            );
-            rows.push(serde_json::json!({
-                "model": mlabel, "condition": cond, "specs": t.specs, "probe_errors": t.probe_error,
-                "entails_kind": t.k, "entails_value": t.v, "entails_wellformed": t.f,
-                "width_exact": t.w_exact, "width_bound_only": t.w_bound, "width_free": t.w_free,
-            }));
+            let mut obj = serde_json::Map::new();
+            obj.insert("model".into(), serde_json::json!(mlabel));
+            obj.insert("condition".into(), serde_json::json!(cond));
+            obj.insert("specs".into(), serde_json::json!(t.specs));
+            obj.insert("probe_errors".into(), serde_json::json!(t.probe_error));
+            for k in &keys {
+                obj.insert(
+                    (*k).to_string(),
+                    serde_json::json!(t.counts.get(*k).copied().unwrap_or(0)),
+                );
+            }
+            rows.push(serde_json::Value::Object(obj));
         }
     }
-    let out = serde_json::json!({ "n": n, "rows": rows });
+    serde_json::json!({ "n": n, "rows": rows })
+}
+
+/// Print the per model×condition strength table — `specs`, `errs`, then one count
+/// column per subject key. Stdout audit only; the JSON is the durable record.
+fn print_strength_table(
+    subject: &StrengthSubject,
+    tallies: &BTreeMap<(String, String), StrengthTally>,
+) {
+    let keys = subject.keys();
+    println!("\n=== structural spec strength (specs entailing each obligation) ===");
+    print!(
+        "{:<12} {:<14} {:>6} {:>6}",
+        "model", "condition", "specs", "errs"
+    );
+    for k in &keys {
+        print!(" {:>18}", k);
+    }
+    println!();
+    for (mlabel, _mid) in MODELS {
+        for cond in CONDITIONS {
+            let t = &tallies[&(mlabel.to_string(), cond.to_string())];
+            print!(
+                "{:<12} {:<14} {:>6} {:>6}",
+                mlabel, cond, t.specs, t.probe_error
+            );
+            for k in &keys {
+                print!(" {:>18}", t.counts.get(*k).copied().unwrap_or(0));
+            }
+            println!();
+        }
+    }
+}
+
+/// `--strength <dir>`: measure structural spec strength for the canonicalize
+/// subject over a cached run directory, print the table, and persist strength.json
+/// (atomic: temp + rename, per C3).
+fn strength(runs_dir: &Path, workdir: &Path, preamble: &str, timeout: Duration) {
+    if !runs_dir.is_dir() {
+        eprintln!("--strength: {} is not a directory", runs_dir.display());
+        std::process::exit(2);
+    }
+    let n: usize = std::env::var("LOOM_TRIALS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(10);
+    println!(
+        "measuring structural spec strength in {}",
+        runs_dir.display()
+    );
+
+    let subject = &CANONICALIZE;
+    let tallies = compute_strength(runs_dir, workdir, preamble, subject, timeout, n);
+    print_strength_table(subject, &tallies);
+
+    let out = strength_rows_json(n, subject, &tallies);
     let tmp = runs_dir.join("strength.json.tmp");
     let final_path = runs_dir.join("strength.json");
     fs::write(&tmp, serde_json::to_string_pretty(&out).unwrap()).unwrap();
     fs::rename(&tmp, &final_path).unwrap();
     println!("\nstrength.json written to {}", final_path.display());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ----- pure obligation/ladder logic (no Dafny) -----
+
+    #[test]
+    fn classify_ladder_returns_first_entailed_rung() {
+        let rungs: &[(&str, &str)] = &[("exact", "g_exact"), ("bound", "g_bound")];
+        // first rung entailed → index 0
+        assert_eq!(classify_ladder(rungs, |g| g == "g_exact"), 0);
+        // only the second rung entailed → index 1
+        assert_eq!(classify_ladder(rungs, |g| g == "g_bound"), 1);
+        // none entailed → the implicit free rung (len)
+        assert_eq!(classify_ladder(rungs, |_| false), 2);
+    }
+
+    #[test]
+    fn classify_ladder_short_circuits_after_first_hit() {
+        let rungs: &[(&str, &str)] = &[("exact", "g_exact"), ("bound", "g_bound")];
+        let mut probed = Vec::new();
+        let idx = classify_ladder(rungs, |g| {
+            probed.push(g.to_string());
+            g == "g_exact"
+        });
+        assert_eq!(idx, 0);
+        assert_eq!(probed, vec!["g_exact"]); // the second rung is never probed
+    }
+
+    #[test]
+    fn obligation_keys_cover_single_and_ladder() {
+        let single = Obligation::Single {
+            key: "k",
+            goal: "g",
+        };
+        assert_eq!(single.keys(), vec!["k"]);
+        let ladder = Obligation::Ladder {
+            rungs: &[("a", "ga"), ("b", "gb")],
+            free_key: "free",
+        };
+        assert_eq!(ladder.keys(), vec!["a", "b", "free"]);
+    }
+
+    #[test]
+    fn canonicalize_keys_match_golden_fields() {
+        let keys: Vec<&str> = CANONICALIZE
+            .obligations
+            .iter()
+            .flat_map(|o| o.keys())
+            .collect();
+        assert_eq!(
+            keys,
+            vec![
+                "entails_kind",
+                "entails_value",
+                "entails_wellformed",
+                "width_exact",
+                "width_bound_only",
+                "width_free",
+            ]
+        );
+    }
+
+    /// Behavior-preservation guard: the canonicalize probe source must be
+    /// byte-identical to the pre-generalization hardcoded template, so the
+    /// generalized gate cannot change a single Dafny verdict on the existing
+    /// subject (M-0003 AC-2's structural counterpart — verdict-level proof is the
+    /// golden regression below).
+    #[test]
+    fn canonicalize_probe_source_is_byte_identical() {
+        let got = assemble_strength(
+            "// P",
+            &CANONICALIZE,
+            "  requires Canonicalize(x).value == x.value",
+            "Wellformed(Canonicalize(x))",
+        );
+        let want = "// P\n\nfunction {:opaque} Canonicalize(x: Id): Id { x }\n\n\
+                    lemma Q(x: Id)\n  requires Wellformed(x)\n\
+                    \x20\x20requires Canonicalize(x).value == x.value\n\
+                    \x20\x20ensures Wellformed(Canonicalize(x))\n{ }\n";
+        assert_eq!(got, want);
+    }
+
+    /// Every model×condition row carries `specs`, `probe_errors`, and one field per
+    /// subject key — a key absent from a tally serializes as 0, never as a missing
+    /// field (so consumers see a stable column set).
+    #[test]
+    fn strength_rows_json_emits_all_subject_keys_with_zero_default() {
+        let mut tallies: BTreeMap<(String, String), StrengthTally> = BTreeMap::new();
+        for (m, _) in MODELS {
+            for c in CONDITIONS {
+                tallies.insert((m.to_string(), c.to_string()), StrengthTally::default());
+            }
+        }
+        let t = tallies
+            .get_mut(&("opus-4.8".to_string(), "disinterested".to_string()))
+            .unwrap();
+        t.specs = 5;
+        t.probe_error = 1;
+        t.counts.insert("entails_kind", 5);
+        t.counts.insert("width_exact", 4);
+        // entails_value/entails_wellformed/width_bound_only/width_free left unset.
+
+        let v = strength_rows_json(7, &CANONICALIZE, &tallies);
+        assert_eq!(v["n"], 7);
+        let rows = v["rows"].as_array().unwrap();
+        assert_eq!(rows.len(), MODELS.len() * CONDITIONS.len());
+
+        let row = rows
+            .iter()
+            .find(|r| r["model"] == "opus-4.8" && r["condition"] == "disinterested")
+            .unwrap();
+        assert_eq!(row["specs"], 5);
+        assert_eq!(row["probe_errors"], 1);
+        assert_eq!(row["entails_kind"], 5);
+        assert_eq!(row["width_exact"], 4);
+        // unset keys default to 0, not absent
+        assert_eq!(row["entails_value"], 0);
+        assert_eq!(row["width_free"], 0);
+
+        for r in rows {
+            for k in [
+                "entails_kind",
+                "entails_value",
+                "entails_wellformed",
+                "width_exact",
+                "width_bound_only",
+                "width_free",
+            ] {
+                assert!(r.get(k).is_some(), "row missing key {k}");
+            }
+        }
+    }
+
+    /// AC-2 golden regression: re-running the generalized gate over the committed
+    /// N=30 canonicalize corpus reproduces the committed golden strength fixture
+    /// exactly — any changed verdict (per-condition K/V/F counts or the width
+    /// exact/bound/free distribution) fails. Slow: a full Dafny strength sweep
+    /// (hundreds of `dafny verify` calls). Run deliberately with
+    /// `cargo test -- --ignored`.
+    #[test]
+    #[ignore = "slow: full N=30 Dafny strength sweep (hundreds of dafny calls)"]
+    fn golden_canonicalize_n30_strength_is_reproduced() {
+        let root = root();
+        let corpus = root.join("tests/fixtures/strength-n30");
+        assert!(
+            corpus.is_dir(),
+            "fixture corpus missing: {}",
+            corpus.display()
+        );
+
+        let preamble = canon_preamble();
+        let workdir = fixture_workdir("golden-n30");
+        let timeout = Duration::from_secs(30);
+        let tallies = compute_strength(&corpus, &workdir, &preamble, &CANONICALIZE, timeout, 30);
+        let produced = strength_rows_json(30, &CANONICALIZE, &tallies);
+
+        let golden: serde_json::Value =
+            serde_json::from_str(&read(&root.join("results/strength-n30.json")))
+                .expect("parse golden strength-n30.json");
+
+        assert_eq!(
+            produced, golden,
+            "structural-strength verdicts drifted from the committed golden fixture"
+        );
+    }
+
+    // ----- AC-1: the generalized interface handles the three new-subject shapes,
+    // proven end-to-end through real Dafny. Each shape has a positive case (a spec
+    // that pins the obligation ⇒ entailed) and a negative case (a weaker spec that
+    // does not ⇒ not entailed), so the gate is shown to discriminate, not just
+    // rubber-stamp. These run `dafny verify`; they need dafny on PATH. -----
+
+    fn fixture_workdir(name: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("loom-ut-{name}"));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    /// The shared canonicalize preamble (PAD, Id, Wellformed), sliced from the
+    /// subject file — what the CANONICALIZE probes are stated against.
+    fn canon_preamble() -> String {
+        let canon = read(&root().join("canonicalize.dfy"));
+        slice_between(
+            &canon,
+            "// === BEGIN PREAMBLE ===",
+            "// === END PREAMBLE ===",
+        )
+        .expect("preamble sentinels in canonicalize.dfy")
+    }
+
+    /// `subject` + `assume` does NOT entail `goal` — having first confirmed the
+    /// probe harness *resolves* (a trivially-true goal verifies). Without that
+    /// guard a `false` verdict could be a resolution error (a typo in the assume)
+    /// masquerading as genuine non-entailment.
+    fn refutes(wd: &Path, subject: &StrengthSubject, assume: &str, goal: &str) -> bool {
+        let to = Duration::from_secs(60);
+        assert!(
+            entails(wd, "", subject, assume, "true", to),
+            "negative harness must resolve, else `!entails` is a resolution error"
+        );
+        !entails(wd, "", subject, assume, goal, to)
+    }
+
+    /// probe_spec drives the per-spec verdict: the resolve guard, each `Single`
+    /// obligation, and the `Ladder` rung selection (exact / bound-only / free). One
+    /// real subject (CANONICALIZE) exercises every branch with a handful of probes.
+    #[test]
+    fn probe_spec_counts_obligations_and_excludes_unresolved() {
+        let wd = fixture_workdir("probe-spec");
+        let pre = canon_preamble();
+        let to = Duration::from_secs(60);
+
+        // A spec pinning all four obligations at exact width: K, V, F entailed and
+        // the ladder lands on the `width_exact` rung.
+        let strong = "  requires Canonicalize(x).kind == x.kind\n\
+                      \x20\x20requires Canonicalize(x).value == x.value\n\
+                      \x20\x20requires Canonicalize(x).width == (if x.width >= PAD then x.width else PAD)\n\
+                      \x20\x20requires Wellformed(Canonicalize(x))";
+        let mut t = StrengthTally::default();
+        assert!(probe_spec(&wd, &pre, &CANONICALIZE, strong, to, &mut t));
+        assert_eq!(t.specs, 1);
+        assert_eq!(t.probe_error, 0);
+        assert_eq!(t.counts.get("entails_kind"), Some(&1));
+        assert_eq!(t.counts.get("entails_value"), Some(&1));
+        assert_eq!(t.counts.get("entails_wellformed"), Some(&1));
+        assert_eq!(t.counts.get("width_exact"), Some(&1));
+        assert_eq!(t.counts.get("width_bound_only"), None);
+
+        // A spec that bounds width but does not pin it: ladder lands on the
+        // bound-only rung, and the un-stated obligations are not entailed.
+        let bound = "  requires Canonicalize(x).kind == x.kind\n\
+                     \x20\x20requires Canonicalize(x).width >= PAD";
+        let mut t = StrengthTally::default();
+        assert!(probe_spec(&wd, &pre, &CANONICALIZE, bound, to, &mut t));
+        assert_eq!(t.counts.get("entails_kind"), Some(&1));
+        assert_eq!(t.counts.get("entails_value"), None);
+        assert_eq!(t.counts.get("width_bound_only"), Some(&1));
+        assert_eq!(t.counts.get("width_exact"), None);
+
+        // A spec silent on width: the ladder falls through to the free rung.
+        let free = "  requires Canonicalize(x).kind == x.kind";
+        let mut t = StrengthTally::default();
+        assert!(probe_spec(&wd, &pre, &CANONICALIZE, free, to, &mut t));
+        assert_eq!(t.counts.get("width_free"), Some(&1));
+        assert_eq!(t.counts.get("width_bound_only"), None);
+
+        // A spec referencing an undefined name does not resolve: counted as a probe
+        // error and excluded from the denominator, never scored as weak.
+        let unresolved = "  requires Bogus(x) == 0";
+        let mut t = StrengthTally::default();
+        assert!(!probe_spec(
+            &wd,
+            &pre,
+            &CANONICALIZE,
+            unresolved,
+            to,
+            &mut t
+        ));
+        assert_eq!(t.specs, 0);
+        assert_eq!(t.probe_error, 1);
+        assert!(t.counts.is_empty());
+    }
+
+    /// compute_strength skips a trial whose response file is missing (read error)
+    /// and one whose response has no extractable spec — both `continue` paths — and
+    /// counts the extractable one.
+    #[test]
+    fn compute_strength_skips_missing_and_unextractable_responses() {
+        let dir = fixture_workdir("compute-mini-corpus");
+        let wd = fixture_workdir("compute-mini-work");
+        let pre = canon_preamble();
+
+        // Extractable spec.
+        fs::write(
+            dir.join("opus-4.8_disinterested_1.txt"),
+            "lemma Spec(x: Id)\n  requires Wellformed(x)\n  \
+             ensures Canonicalize(x).kind == x.kind\n{ }\n",
+        )
+        .unwrap();
+        // No `lemma Spec` → extract returns None → skipped.
+        fs::write(
+            dir.join("opus-4.8_incentivized_1.txt"),
+            "the model declined to answer\n",
+        )
+        .unwrap();
+        // Every other {model}_{cond}_1.txt is absent → read error → skipped.
+
+        let tallies = compute_strength(&dir, &wd, &pre, &CANONICALIZE, Duration::from_secs(60), 1);
+        let counted = &tallies[&("opus-4.8".to_string(), "disinterested".to_string())];
+        assert_eq!(counted.specs, 1);
+        assert_eq!(counted.counts.get("entails_kind"), Some(&1));
+        // unextractable response: nothing counted
+        let unextractable = &tallies[&("opus-4.8".to_string(), "incentivized".to_string())];
+        assert_eq!(unextractable.specs, 0);
+        // missing file: nothing counted
+        let missing = &tallies[&("sonnet-4.6".to_string(), "disinterested".to_string())];
+        assert_eq!(missing.specs, 0);
+    }
+
+    /// FSM legality subject: a finite (kind, status, status) relation, made opaque.
+    const FSM: StrengthSubject = StrengthSubject {
+        opaque_decls: "datatype Kind = Milestone | Epic\n\
+                       datatype Status = Draft | Active | Done\n\
+                       predicate {:opaque} Legal(k: Kind, f: Status, t: Status) { true }",
+        binder: "",
+        requires: "",
+        obligations: &[],
+    };
+
+    /// Prosey-title subject: a unary `string -> bool`, made opaque.
+    const PROSEY: StrengthSubject = StrengthSubject {
+        opaque_decls: "predicate {:opaque} IsProsey(s: string) { false }",
+        binder: "",
+        requires: "",
+        obligations: &[],
+    };
+
+    // The full legality relation, as a spec that pins the negative space.
+    const LEGAL_PINNED: &str = "  requires forall k: Kind, f: Status, t: Status :: \
+        Legal(k, f, t) <==> ((f == Draft && t == Active) || (f == Active && t == Done))";
+
+    #[test]
+    fn shape_exclusion_goal_over_ground_tuple() {
+        let wd = fixture_workdir("exclusion");
+        let to = Duration::from_secs(60);
+        // Done -> Active is not a legal transition: a spec pinning legality entails
+        // the exclusion `!Legal(Milestone, Done, Active)`.
+        assert!(entails(
+            &wd,
+            "",
+            &FSM,
+            LEGAL_PINNED,
+            "!Legal(Milestone, Done, Active)",
+            to
+        ));
+        // A spec that only asserts which transitions DO exist says nothing about
+        // the negative space — the exclusion is not entailed.
+        assert!(refutes(
+            &wd,
+            &FSM,
+            "  requires Legal(Milestone, Draft, Active) && Legal(Milestone, Active, Done)",
+            "!Legal(Milestone, Done, Active)",
+        ));
+    }
+
+    #[test]
+    fn shape_bounded_quantifier_over_finite_datatype() {
+        let wd = fixture_workdir("bounded-quantifier");
+        let to = Duration::from_secs(60);
+        // Done is terminal: the pinned spec entails the bounded ∀ over Status.
+        assert!(entails(
+            &wd,
+            "",
+            &FSM,
+            LEGAL_PINNED,
+            "forall t: Status :: !Legal(Milestone, Done, t)",
+            to
+        ));
+        // A spec that only names one outgoing edge does not entail terminality.
+        assert!(refutes(
+            &wd,
+            &FSM,
+            "  requires Legal(Milestone, Draft, Active)",
+            "forall t: Status :: !Legal(Milestone, Done, t)",
+        ));
+    }
+
+    #[test]
+    fn shape_unary_predicate_over_single_value() {
+        let wd = fixture_workdir("unary-predicate");
+        let to = Duration::from_secs(60);
+        // A spec with the "long strings are prosey" rule entails IsProsey on a
+        // concrete long string.
+        assert!(entails(
+            &wd,
+            "",
+            &PROSEY,
+            "  requires forall s: string :: |s| > 5 ==> IsProsey(s)",
+            "IsProsey(\"hello world\")",
+            to
+        ));
+        // A spec that only pins a different value does not entail it.
+        assert!(refutes(
+            &wd,
+            &PROSEY,
+            "  requires IsProsey(\"something else\")",
+            "IsProsey(\"hello world\")",
+        ));
+    }
 }

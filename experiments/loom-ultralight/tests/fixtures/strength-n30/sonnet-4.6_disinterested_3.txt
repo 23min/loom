@@ -1,0 +1,46 @@
+I'll analyze the contract carefully and write both the implementation and the specification.
+
+## Contract Analysis
+
+1. **Kind never changes**: `result.kind == x.kind`
+2. **Value never changes**: `result.value == x.value`
+3. **Width becomes max(4, current_width)** — wait, re-reading: "left-zero-padded to a minimum of 4 digits", and "an id already at 4 or more digits is returned unchanged". So the canonical width is `max(4, x.width)`.
+4. **Idempotent**: canonicalizing an already-canonical id is a no-op.
+5. **Wellformed is preserved**: if input is wellformed, output is wellformed.
+
+The canonical width is `max(PAD, x.width)` — we pad to at least 4, but never shrink an id that's already wider than 4.
+
+## Implementation
+
+```dafny
+function Canonicalize(x: Id): Id {
+  Id(x.kind, x.value, if x.width >= PAD then x.width else PAD)
+}
+```
+
+## Lemma with `ensures` clauses
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures Canonicalize(x).kind == x.kind
+  ensures Canonicalize(x).value == x.value
+  ensures Canonicalize(x).width == if x.width >= PAD then x.width else PAD
+  ensures Canonicalize(x).width >= PAD
+  ensures Canonicalize(x).width >= x.width
+  ensures Wellformed(Canonicalize(x))
+  ensures Canonicalize(Canonicalize(x)) == Canonicalize(x)
+{ }
+```
+
+### Explanation of each clause
+
+| Clause | Rationale |
+|--------|-----------|
+| `kind` unchanged | Core invariant: canonicalization never changes which entity is referenced |
+| `value` unchanged | Core invariant: same entity |
+| `width == if x.width >= PAD then x.width else PAD` | Precise definition of canonical width |
+| `width >= PAD` | Explicit minimum-4-digits guarantee |
+| `width >= x.width` | Width never shrinks (ids already ≥ 4 digits are returned unchanged) |
+| `Wellformed(result)` | Output remains representable (width still fits the value) |
+| `Canonicalize(Canonicalize(x)) == Canonicalize(x)` | Idempotence: re-canonicalizing a canonical id is a no-op |

@@ -1,0 +1,76 @@
+I need to write a Dafny function `Canonicalize` and a lemma `Spec` that specifies its behavior.
+
+Let me think about what canonicalization does:
+- Takes an `Id(kind, value, width)`
+- Returns an `Id` with the same `kind` and `value`
+- The new width is `max(4, width)` — wait, let me re-read.
+
+"Canonicalization rewrites an id to canonical width: the numeric value is left-zero-padded to a **minimum of 4 digits**. An id already at 4 or more digits is returned unchanged."
+
+So canonical width = max(PAD, NumDigits(value))... wait, "An id already at 4 or more digits is returned unchanged" means if width >= 4, return as-is. If width < 4, set width to 4.
+
+Actually: "the numeric value is left-zero-padded to a minimum of 4 digits" means the width becomes max(4, current_width)? No — it means width becomes max(4, NumDigits(value))? 
+
+Re-reading: "An id already at 4 or more digits is returned unchanged (4 is a minimum, not a maximum)." So if current width >= 4, return unchanged. If current width < 4, set width to 4.
+
+So: `new_width = if x.width >= PAD then x.width else PAD`
+
+Which simplifies to `max(x.width, PAD)`.
+
+For the `ensures` clauses of `Spec`, I need to specify:
+1. The kind is preserved
+2. The value is preserved  
+3. The width is at least PAD
+4. If already at PAD or more, unchanged
+5. The result is wellformed
+
+Let me also think about what Dafny can verify. I'll keep the spec simple and provable.
+
+```dafny
+function Canonicalize(x: Id): Id {
+  if x.width >= PAD then x
+  else Id(x.kind, x.value, PAD)
+}
+
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures Canonicalize(x).kind == x.kind
+  ensures Canonicalize(x).value == x.value
+  ensures Canonicalize(x).width >= PAD
+  ensures x.width >= PAD ==> Canonicalize(x) == x
+  ensures Canonicalize(x).width == if x.width >= PAD then x.width else PAD
+  ensures Wellformed(Canonicalize(x))
+  ensures Canonicalize(Canonicalize(x)) == Canonicalize(x)
+{ }
+```
+
+Wait, I need to verify `Wellformed(Canonicalize(x))`. 
+
+`Wellformed(x)` means `x.width >= NumDigits(x.value)`.
+
+Case 1: `x.width >= PAD`. Result is `x`, which is wellformed by hypothesis.
+
+Case 2: `x.width < PAD`. Result is `Id(x.kind, x.value, PAD)`. Need `PAD >= NumDigits(x.value)`. Since `x.width >= NumDigits(x.value)` (wellformed) and `x.width < PAD = 4`, we have `NumDigits(x.value) <= x.width <= 3 < 4 = PAD`. So `PAD >= NumDigits(x.value)`. Dafny should be able to figure this out.
+
+Actually, Dafny might need help with the `NumDigits` reasoning. Let me check if the empty body suffices. If not, I might need a helper. Let me keep it simple and hope Dafny can handle it.
+
+```dafny
+function Canonicalize(x: Id): Id {
+  if x.width >= PAD then x
+  else Id(x.kind, x.value, PAD)
+}
+
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures Canonicalize(x).kind == x.kind
+  ensures Canonicalize(x).value == x.value
+  ensures Canonicalize(x).width >= PAD
+  ensures x.width >= PAD ==> Canonicalize(x) == x
+  ensures Canonicalize(x).width == if x.width >= PAD then x.width else PAD
+  ensures Wellformed(Canonicalize(x))
+  ensures Canonicalize(Canonicalize(x)) == Canonicalize(x)
+{
+}
+```
+
+The `Wellformed(Canonicalize(x))` in case 2: we need `PAD >= NumDigits(x.value)`. We know `x.width >= NumDigits(x.value)` and `x.width < PAD`. So `NumDigits(x.value) <= x.width` and `x.width < 4`, so `NumDigits(x.value) <= 3 < 4 = PAD`. This arithmetic should be straightforward for Dafny.
