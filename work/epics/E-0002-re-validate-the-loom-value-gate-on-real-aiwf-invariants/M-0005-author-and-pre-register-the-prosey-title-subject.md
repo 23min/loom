@@ -15,7 +15,7 @@ acs:
       status: met
     - id: AC-3
       title: Each gold obligation probes as an isolable goal through the gate
-      status: open
+      status: met
     - id: AC-4
       title: Pre-registration committed with a total falsifiable verdict map
       status: open
