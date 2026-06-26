@@ -4,6 +4,10 @@ title: Generalize the structural strength gate to a per-subject obligation list
 status: draft
 parent: E-0002
 tdd: advisory
+acs:
+    - id: AC-1
+      title: Strength gate driven by per-subject obligation spec
+      status: open
 ---
 ## Goal
 
@@ -91,3 +95,6 @@ single-input goals before pre-registering.
 ## Reviewer notes
 
 - (none)
+
+### AC-1 — Strength gate driven by per-subject obligation spec
+
