@@ -16,7 +16,7 @@ acs:
       status: met
     - id: AC-3
       title: Artifact lands before the run for the M-0006 ancestor check
-      status: open
+      status: met
 ---
 ## Goal
 
