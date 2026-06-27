@@ -52,18 +52,19 @@ const MODELS: &[(&str, &str)] = &[
 ];
 const CONDITIONS: &[&str] = &["disinterested", "incentivized"];
 
-/// The models GENERATED and kill-rate-scored for this invocation: every model in
-/// `MODELS`, or the subset named by `LOOM_MODELS` (comma-separated labels) when set —
-/// so a run can target just the pre-registered primary model (`opus-4.8`) without
-/// spending on the others. `score_trials` (generation + kill-rate) iterates this
-/// subset, so `results.json` carries only the active models' rows. The STRENGTH path
-/// (`compute_strength` / `strength_rows_json`) still iterates all of `MODELS`, emitting
-/// zero rows for models that were not generated (no cached responses → empty tally) —
-/// so under a single-model run `strength.json` has all three rows while `results.json`
-/// has one. That row-membership divergence is harmless (the verdict reads the active
-/// model, present in both, and nothing panics) but is a known inconsistency tracked for
-/// unification before the harness is reused (E-0003). Defaults to all models, so tests
-/// and the committed golden corpus are unaffected.
+/// The pre-registered primary model the §6 verdict is read on (prereg §5: the strongest
+/// effect in M-0002; the effect rose with capability). One source for the places that
+/// otherwise named the literal — `build_observation` and `emit_verdict`.
+const PRIMARY_MODEL: &str = "opus-4.8";
+
+/// The models GENERATED and scored for this invocation: every model in `MODELS`, or the
+/// subset named by `LOOM_MODELS` (comma-separated labels) when set — so a run can target
+/// just the pre-registered primary model without spending on the others. Resolved ONCE in
+/// `main` and threaded into both the kill-rate path (`score_trials`) and the strength path
+/// (`compute_strength` / `strength_rows_json` / `print_strength_table`), so `results.json`
+/// and `strength.json` carry the same model rows (closes G-0004's row-membership
+/// divergence). Defaults to all models, so tests and the committed golden corpus are
+/// unaffected.
 fn active_models() -> Vec<(&'static str, &'static str)> {
     match std::env::var("LOOM_MODELS") {
         Ok(s) if !s.trim().is_empty() => {
@@ -222,6 +223,34 @@ impl Score {
 /// Validity-gate a candidate spec against the reference impl, then score it
 /// against the mutant bank. A spec that the *correct* impl fails is over-strong
 /// and reported invalid (excluded), per loom-ultralight.md §4.
+/// The over-claim (validity) gate: does the reference implementation verify against
+/// the candidate spec? A spec the reference impl fails is too strong — an over-claim —
+/// and is invalid. Single owner of "valid" (C1): both the kill-rate scorer
+/// (`score_spec`) and the strength probe (`probe_spec`) consult it, so an over-claim is
+/// excluded from both measures and never inflates either toward the null.
+fn validate_spec(
+    workdir: &Path,
+    preamble: &str,
+    ref_impl: &str,
+    subject: &StrengthSubject,
+    spec_ensures: &str,
+    timeout: Duration,
+) -> Outcome {
+    let vfile = workdir.join("_validity.dfy");
+    fs::write(
+        &vfile,
+        assemble(
+            preamble,
+            ref_impl,
+            spec_ensures,
+            subject.binder,
+            subject.requires,
+        ),
+    )
+    .unwrap();
+    run_dafny(&vfile, timeout).0
+}
+
 fn score_spec(
     workdir: &Path,
     preamble: &str,
@@ -232,15 +261,14 @@ fn score_spec(
     timeout: Duration,
 ) -> Score {
     let mut score = Score::empty();
-    let (binder, requires) = (subject.strength.binder, subject.strength.requires);
-
-    let vfile = workdir.join("_validity.dfy");
-    fs::write(
-        &vfile,
-        assemble(preamble, ref_impl, spec_ensures, binder, requires),
-    )
-    .unwrap();
-    let (vo, _vlog) = run_dafny(&vfile, timeout);
+    let vo = validate_spec(
+        workdir,
+        preamble,
+        ref_impl,
+        &subject.strength,
+        spec_ensures,
+        timeout,
+    );
     if vo != Outcome::Verified {
         score.note = format!(
             "invalid: reference impl did not verify against spec ({})",
@@ -250,6 +278,7 @@ fn score_spec(
     }
     score.valid = true;
 
+    let (binder, requires) = (subject.strength.binder, subject.strength.requires);
     for name in subject.mutants {
         let body = match mutants.get(*name) {
             Some(b) => b,
@@ -419,6 +448,14 @@ fn main() {
         "gold-spec",
     );
     let mutants = load_mutants(&root, subject);
+    // Resolve the active-model list once (G-0004): both the kill-rate and strength
+    // paths iterate this same list, so `results.json` and `strength.json` agree on row
+    // membership. Defaults to all of `MODELS`; `LOOM_MODELS` narrows it.
+    let models = active_models();
+    let frags = Fragments {
+        preamble: &preamble,
+        ref_impl: &ref_impl,
+    };
 
     match mode.as_str() {
         "--calibrate" => calibrate(
@@ -430,9 +467,7 @@ fn main() {
             &gold_ensures,
             timeout,
         ),
-        "--run" => run(
-            &root, &workdir, &preamble, &ref_impl, subject, &mutants, timeout,
-        ),
+        "--run" => run(&root, &workdir, &frags, subject, &mutants, &models, timeout),
         "--rescore" => {
             let dir = std::env::args().nth(2).unwrap_or_else(|| {
                 eprintln!("usage: loom-ultralight --rescore <runs-dir>");
@@ -441,10 +476,10 @@ fn main() {
             rescore(
                 &PathBuf::from(dir),
                 &workdir,
-                &preamble,
-                &ref_impl,
+                &frags,
                 subject,
                 &mutants,
+                &models,
                 timeout,
             );
         }
@@ -453,7 +488,14 @@ fn main() {
                 eprintln!("usage: loom-ultralight --strength <runs-dir>");
                 std::process::exit(2);
             });
-            strength(&PathBuf::from(dir), &workdir, &preamble, subject, timeout);
+            strength(
+                &PathBuf::from(dir),
+                &workdir,
+                &frags,
+                &models,
+                subject,
+                timeout,
+            );
         }
         "--decide" => {
             let (a, b) = (std::env::args().nth(2), std::env::args().nth(3));
@@ -538,6 +580,14 @@ fn calibrate(
     }
 }
 
+/// The gold `.dfy` source fragments a sweep is stated against — the preamble both arms'
+/// specs reference, and the reference implementation the validity gate checks against.
+/// Resolved once in `main` and threaded so the multi-arg sweep functions stay readable.
+struct Fragments<'a> {
+    preamble: &'a str,
+    ref_impl: &'a str,
+}
+
 /// The fixed inputs a kill-rate scoring sweep shares across every trial: the subject
 /// plus the Dafny fragments and loaded mutant bank its specs are scored against.
 /// Bundled so the sweep signature stays small — these four always travel together.
@@ -548,12 +598,14 @@ struct ScoreCtx<'a> {
     mutants: &'a BTreeMap<String, String>,
 }
 
-/// A kill-rate sweep's result: the per model×condition mean kill-rate, and the
-/// per-row `(model, condition, valid, trials, mean)` table.
-type TrialScores = (
-    BTreeMap<(String, String), Option<f64>>,
-    Vec<(String, String, usize, usize, Option<f64>)>,
-);
+/// One kill-rate table row: `(model, condition, valid, extracted, trials, mean_kill)`.
+/// `extracted` (specs that parsed) is the over-claim-rate denominator; `valid` (passed
+/// the validity gate) is the §6 power denominator.
+type KillRow = (String, String, usize, usize, usize, Option<f64>);
+
+/// A kill-rate sweep's result: the per model×condition mean kill-rate, and the per-row
+/// table.
+type TrialScores = (BTreeMap<(String, String), Option<f64>>, Vec<KillRow>);
 
 /// Score one model × condition × trial sweep, fetching each response via
 /// `get_resp` (a live API call in `--run`, a cached file read in `--rescore`).
@@ -562,6 +614,7 @@ type TrialScores = (
 fn score_trials<F>(
     workdir: &Path,
     ctx: &ScoreCtx,
+    models: &[(&'static str, &'static str)],
     timeout: Duration,
     n: usize,
     mut get_resp: F,
@@ -570,12 +623,13 @@ where
     F: FnMut(&str, &str, usize) -> Option<String>,
 {
     let mut means: BTreeMap<(String, String), Option<f64>> = BTreeMap::new();
-    let mut table: Vec<(String, String, usize, usize, Option<f64>)> = Vec::new();
+    let mut table: Vec<KillRow> = Vec::new();
 
-    for (mlabel, _mid) in &active_models() {
+    for (mlabel, _mid) in models {
         for cond in CONDITIONS {
             let mut rates: Vec<f64> = Vec::new();
             let mut valid = 0usize;
+            let mut extracted = 0usize;
             for trial in 1..=n {
                 let resp = match get_resp(mlabel, cond, trial) {
                     Some(r) => r,
@@ -588,6 +642,7 @@ where
                         continue;
                     }
                 };
+                extracted += 1;
                 let s = score_spec(
                     workdir,
                     ctx.preamble,
@@ -620,10 +675,38 @@ where
                 Some(rates.iter().sum::<f64>() / rates.len() as f64)
             };
             means.insert((mlabel.to_string(), cond.to_string()), mean);
-            table.push((mlabel.to_string(), cond.to_string(), valid, n, mean));
+            table.push((
+                mlabel.to_string(),
+                cond.to_string(),
+                valid,
+                extracted,
+                n,
+                mean,
+            ));
         }
     }
     (means, table)
+}
+
+/// The kill-rate results JSON: one row per model×condition carrying `valid`, `extracted`
+/// (the over-claim-rate denominator), `trials`, and the mean kill-rate. Pure — split from
+/// `print_results` so the row shape (a B2 boundary the verdict step and external
+/// consumers read) is testable without a sweep.
+fn results_json(n: usize, mutant_count: usize, table: &[KillRow]) -> serde_json::Value {
+    let rows: Vec<serde_json::Value> = table
+        .iter()
+        .map(|(m, c, valid, extracted, trials, mean)| {
+            serde_json::json!({
+                "model": m,
+                "condition": c,
+                "valid": valid,
+                "extracted": extracted,
+                "trials": trials,
+                "mean_kill_rate": mean,
+            })
+        })
+        .collect();
+    serde_json::json!({ "n": n, "mutants": mutant_count, "rows": rows })
 }
 
 /// Print the kill-rate table + per-model gap and persist results.json (atomic:
@@ -631,27 +714,28 @@ where
 fn print_results(
     n: usize,
     mutant_count: usize,
+    models: &[(&'static str, &'static str)],
     means: &BTreeMap<(String, String), Option<f64>>,
-    table: &[(String, String, usize, usize, Option<f64>)],
+    table: &[KillRow],
     out_dir: &Path,
 ) {
     println!("\n=== kill-rate table (N={n}, mutants={mutant_count}) ===");
     println!(
-        "{:<12} {:<14} {:>10} {:>12}",
-        "model", "condition", "valid", "mean_kill"
+        "{:<12} {:<14} {:>14} {:>12}",
+        "model", "condition", "valid/ext/n", "mean_kill"
     );
-    for (m, c, v, ntot, mean) in table {
+    for (m, c, v, ext, ntot, mean) in table {
         println!(
-            "{:<12} {:<14} {:>10} {:>12}",
+            "{:<12} {:<14} {:>14} {:>12}",
             m,
             c,
-            format!("{v}/{ntot}"),
+            format!("{v}/{ext}/{ntot}"),
             mean.map(|x| format!("{x:.2}")).unwrap_or("—".into())
         );
     }
 
     println!("\n=== gap (mean disinterested − mean incentivized) per model ===");
-    for (mlabel, _) in MODELS {
+    for (mlabel, _) in models {
         let d = means
             .get(&(mlabel.to_string(), "disinterested".to_string()))
             .cloned()
@@ -672,19 +756,7 @@ fn print_results(
         }
     }
 
-    let rows: Vec<serde_json::Value> = table
-        .iter()
-        .map(|(m, c, v, ntot, mean)| {
-            serde_json::json!({
-                "model": m,
-                "condition": c,
-                "valid": v,
-                "trials": ntot,
-                "mean_kill_rate": mean,
-            })
-        })
-        .collect();
-    let results = serde_json::json!({ "n": n, "mutants": mutant_count, "rows": rows });
+    let results = results_json(n, mutant_count, table);
     let tmp = out_dir.join("results.json.tmp");
     let final_path = out_dir.join("results.json");
     fs::write(&tmp, serde_json::to_string_pretty(&results).unwrap()).unwrap();
@@ -695,10 +767,10 @@ fn print_results(
 fn run(
     root: &Path,
     workdir: &Path,
-    preamble: &str,
-    ref_impl: &str,
+    frags: &Fragments,
     subject: &Subject,
     mutants: &BTreeMap<String, String>,
+    models: &[(&'static str, &'static str)],
     timeout: Duration,
 ) {
     let key = std::env::var("ANTHROPIC_API_KEY").unwrap_or_default();
@@ -740,18 +812,18 @@ fn run(
 
     let ctx = ScoreCtx {
         subject,
-        preamble,
-        ref_impl,
+        preamble: frags.preamble,
+        ref_impl: frags.ref_impl,
         mutants,
     };
-    let (means, table) = score_trials(workdir, &ctx, timeout, n, |mlabel, cond, trial| {
+    let (means, table) = score_trials(workdir, &ctx, models, timeout, n, |mlabel, cond, trial| {
         let mid = MODELS
             .iter()
             .find(|(l, _)| *l == mlabel)
             .map(|(_, id)| *id)?;
         let prompt = templates[cond]
             .replace("{{INTENT}}", intent.trim())
-            .replace("{{PREAMBLE}}", preamble)
+            .replace("{{PREAMBLE}}", frags.preamble)
             .replace("{{IMPL_SIG}}", subject.impl_signature)
             .replace("{{LEMMA_SIG}}", &lemma_sig)
             .replace("{{TRIAL}}", &trial.to_string());
@@ -766,7 +838,7 @@ fn run(
             }
         }
     });
-    print_results(n, mutants.len(), &means, &table, &runs);
+    print_results(n, mutants.len(), models, &means, &table, &runs);
     println!("raw responses saved under {}", runs.display());
 }
 
@@ -775,10 +847,10 @@ fn run(
 fn rescore(
     runs_dir: &Path,
     workdir: &Path,
-    preamble: &str,
-    ref_impl: &str,
+    frags: &Fragments,
     subject: &Subject,
     mutants: &BTreeMap<String, String>,
+    models: &[(&'static str, &'static str)],
     timeout: Duration,
 ) {
     if !runs_dir.is_dir() {
@@ -792,15 +864,15 @@ fn rescore(
     println!("re-scoring cached responses in {}", runs_dir.display());
     let ctx = ScoreCtx {
         subject,
-        preamble,
-        ref_impl,
+        preamble: frags.preamble,
+        ref_impl: frags.ref_impl,
         mutants,
     };
-    let (means, table) = score_trials(workdir, &ctx, timeout, n, |mlabel, cond, trial| {
+    let (means, table) = score_trials(workdir, &ctx, models, timeout, n, |mlabel, cond, trial| {
         let p = runs_dir.join(format!("{mlabel}_{cond}_{trial}.txt"));
         fs::read_to_string(&p).ok()
     });
-    print_results(n, mutants.len(), &means, &table, runs_dir);
+    print_results(n, mutants.len(), models, &means, &table, runs_dir);
 }
 
 /// One structural-strength obligation, stated over the subject's opaque
@@ -1184,7 +1256,10 @@ fn entails_outcome(
     run_dafny(&f, timeout).0
 }
 
-/// True iff the assumed spec entails `goal` for `subject` (the probe verifies).
+/// True iff the assumed spec entails `goal` for `subject` (the probe verifies). Now a
+/// test-only convenience — production routes outcomes through `probe_spec_core`'s
+/// injected closure; kept for the obligation calibration tests' readability.
+#[cfg(test)]
 fn entails(
     workdir: &Path,
     preamble: &str,
@@ -1201,18 +1276,25 @@ fn entails(
 
 /// Per model×condition aggregate. `counts` maps each obligation/rung key to the
 /// number of specs that entailed it; the key set is the subject's, so the tally is
-/// subject-agnostic. `specs` is the denominator (specs whose probe harness
-/// resolved); `probe_error` counts specs excluded because their probe did not even
-/// resolve.
+/// subject-agnostic. `specs` is the entailment-rate denominator — the VALID population
+/// (G-0005): specs that pass the validity gate and resolve. The two exclusion buckets
+/// are `invalid` (failed the validity gate) and `probe_error` (failed the resolve
+/// guard); `specs + invalid + probe_error` is the extracted-spec count probed.
 #[derive(Default)]
 struct StrengthTally {
     specs: usize,
+    /// Specs excluded by the validity gate (G-0005): the reference impl did not verify
+    /// against them (`validate_spec != Verified`). That covers over-claims AND specs
+    /// that don't resolve against the ref impl (an undefined name fails validity before
+    /// the resolve guard ever runs). Kept distinct from `probe_error` (the requires-form
+    /// resolve guard against the opaque harness) for the audit trail.
+    invalid: usize,
     probe_error: usize,
     counts: BTreeMap<&'static str, usize>,
-    // ---- M-0006 verdict inputs (additive; NOT serialized by `strength_rows_json`,
-    // so the M-0003 canonicalize golden stays byte-identical). The prereg §5 measure:
-    // a per-obligation entailment rate is `counts[key] / definite[key]`, with Z3
-    // timeouts dropped from the denominator. ----
+    // ---- M-0006 verdict inputs: `definite`/`obligation_probes`/`obligation_timeouts`
+    // are NOT serialized by `strength_rows_json` (only `specs`/`invalid`/`probe_error` +
+    // the obligation keys are). The prereg §5 measure: a per-obligation entailment rate
+    // is `counts[key] / definite[key]`, with Z3 timeouts dropped from the denominator. ----
     /// Per-key count of Single-obligation probes with a DEFINITE outcome (Verified or
     /// Failed) — the entailment-rate denominator (timeouts excluded).
     definite: BTreeMap<&'static str, usize>,
@@ -1246,23 +1328,54 @@ fn mean_entailment_rate(tally: &StrengthTally, keys: &[&str]) -> Option<f64> {
     }
 }
 
-/// Probe one cached spec's strength under `subject`, mutating `tally`: the probe
-/// guard sets `probe_error`/`specs`, and each entailed obligation increments its
-/// key in `tally.counts`. Returns true when the probe resolved (spec counted),
-/// false when it was excluded as a probe error — the caller emits the audit line.
+/// Probe one cached spec's strength under `subject`, mutating `tally`. The production
+/// entry: it computes the validity outcome and the real Dafny-backed obligation-probe
+/// closure (`goal -> Outcome`), then delegates the routing to `probe_spec_core`.
+/// Returns true when the spec entered the population (valid and resolved), false when
+/// it was excluded (`invalid` or `probe_error`) — the caller emits the audit line.
 fn probe_spec(
     workdir: &Path,
     preamble: &str,
+    ref_impl: &str,
     subject: &StrengthSubject,
-    assume: &str,
+    spec_ensures: &str,
     timeout: Duration,
     tally: &mut StrengthTally,
 ) -> bool {
-    // Guard: if the probe harness does not even resolve (the spec references an
-    // undefined name, or its assumed clauses don't type-check), a trivially-true
-    // goal fails. Count it as a probe error and exclude it — do not misread it as
-    // a weak spec.
-    if !entails(workdir, preamble, subject, assume, "true", timeout) {
+    let validity = validate_spec(workdir, preamble, ref_impl, subject, spec_ensures, timeout);
+    let assume_owned = ensures_to_requires(spec_ensures);
+    let assume = assume_owned.as_str();
+    probe_spec_core(subject, validity, tally, |goal| {
+        entails_outcome(workdir, preamble, subject, assume, goal, timeout)
+    })
+}
+
+/// The pure routing of a spec's strength probe — no Dafny. Given the spec's `validity`
+/// outcome and an obligation-probe closure (`goal -> Outcome`), it applies the two
+/// exclusion gates and the §5 trichotomy, mutating `tally`. `probe_spec` supplies the
+/// real Dafny-backed closure; tests supply a scripted one (as `classify_ladder` takes a
+/// `probe` closure) to pin every routing branch without a verifier: validity →
+/// `invalid`; resolve → `probe_error`; per-obligation Verified → counts + definite,
+/// Failed → definite, Timeout → `obligation_timeouts` dropped from the denominator.
+fn probe_spec_core<F: FnMut(&str) -> Outcome>(
+    subject: &StrengthSubject,
+    validity: Outcome,
+    tally: &mut StrengthTally,
+    mut probe: F,
+) -> bool {
+    // Validity gate (G-0005): exclude any spec the reference impl fails — an
+    // over-claim. Without it a resolving-but-invalid (e.g. ex-falso) over-claim would
+    // entail every obligation and inflate the rates toward the null, so the strength
+    // population is exactly the valid (kill-rate-valid) population.
+    if validity != Outcome::Verified {
+        tally.invalid += 1;
+        return false;
+    }
+    // Resolve guard: the requires-form must type-check in the opaque harness (a
+    // trivially-true goal verifies). Distinct from `invalid`: this is the requires-form
+    // failing to resolve, not the reference impl failing the spec — a valid spec
+    // normally resolves, so this is a defensive backstop.
+    if probe("true") != Outcome::Verified {
         tally.probe_error += 1;
         return false;
     }
@@ -1270,14 +1383,12 @@ fn probe_spec(
     for ob in subject.obligations {
         match ob {
             Obligation::Single { key, goal } => {
-                // Record the full trichotomy: a Verified probe entails the obligation
+                // The full §5 trichotomy: a Verified probe entails the obligation
                 // (counts AND definite); a Failed probe is a definite non-entailment
                 // (definite only); a Timeout is inconclusive — dropped from `definite`
-                // and tallied as an inconclusive probe (prereg §5). `counts` is
-                // incremented exactly as before (Verified only), so the canonicalize
-                // golden serialization is unchanged.
+                // and tallied as an inconclusive probe.
                 tally.obligation_probes += 1;
-                match entails_outcome(workdir, preamble, subject, assume, goal, timeout) {
+                match probe(goal) {
                     Outcome::Verified => {
                         *tally.counts.entry(key).or_default() += 1;
                         *tally.definite.entry(key).or_default() += 1;
@@ -1293,9 +1404,7 @@ fn probe_spec(
             Obligation::Ladder { rungs, free_key } => {
                 // First rung the spec entails wins (exact pins; else bound-only);
                 // none ⇒ the implicit free rung.
-                let idx = classify_ladder(rungs, |g| {
-                    entails(workdir, preamble, subject, assume, g, timeout)
-                });
+                let idx = classify_ladder(rungs, |g| probe(g) == Outcome::Verified);
                 let key = if idx < rungs.len() {
                     rungs[idx].0
                 } else {
@@ -1314,13 +1423,14 @@ fn probe_spec(
 fn compute_strength(
     runs_dir: &Path,
     workdir: &Path,
-    preamble: &str,
+    frags: &Fragments,
     subject: &StrengthSubject,
+    models: &[(&'static str, &'static str)],
     timeout: Duration,
     n: usize,
 ) -> BTreeMap<(String, String), StrengthTally> {
     let mut tallies: BTreeMap<(String, String), StrengthTally> = BTreeMap::new();
-    for (mlabel, _mid) in MODELS {
+    for (mlabel, _mid) in models {
         for cond in CONDITIONS {
             let t = tallies
                 .entry((mlabel.to_string(), cond.to_string()))
@@ -1335,11 +1445,20 @@ fn compute_strength(
                     Some(e) => e,
                     None => continue,
                 };
-                let assume = ensures_to_requires(&ensures);
-                if probe_spec(workdir, preamble, subject, &assume, timeout, t) {
+                if probe_spec(
+                    workdir,
+                    frags.preamble,
+                    frags.ref_impl,
+                    subject,
+                    &ensures,
+                    timeout,
+                    t,
+                ) {
                     println!("[{mlabel}/{cond}/{trial}] strength probed");
                 } else {
-                    println!("[{mlabel}/{cond}/{trial}] probe error (did not resolve) — excluded");
+                    println!(
+                        "[{mlabel}/{cond}/{trial}] excluded (invalid over-claim or unresolved)"
+                    );
                 }
             }
         }
@@ -1354,17 +1473,19 @@ fn compute_strength(
 fn strength_rows_json(
     n: usize,
     subject: &StrengthSubject,
+    models: &[(&'static str, &'static str)],
     tallies: &BTreeMap<(String, String), StrengthTally>,
 ) -> serde_json::Value {
     let keys = subject.keys();
     let mut rows = Vec::new();
-    for (mlabel, _mid) in MODELS {
+    for (mlabel, _mid) in models {
         for cond in CONDITIONS {
             let t = &tallies[&(mlabel.to_string(), cond.to_string())];
             let mut obj = serde_json::Map::new();
             obj.insert("model".into(), serde_json::json!(mlabel));
             obj.insert("condition".into(), serde_json::json!(cond));
             obj.insert("specs".into(), serde_json::json!(t.specs));
+            obj.insert("invalid".into(), serde_json::json!(t.invalid));
             obj.insert("probe_errors".into(), serde_json::json!(t.probe_error));
             for k in &keys {
                 obj.insert(
@@ -1382,24 +1503,25 @@ fn strength_rows_json(
 /// column per subject key. Stdout audit only; the JSON is the durable record.
 fn print_strength_table(
     subject: &StrengthSubject,
+    models: &[(&'static str, &'static str)],
     tallies: &BTreeMap<(String, String), StrengthTally>,
 ) {
     let keys = subject.keys();
     println!("\n=== structural spec strength (specs entailing each obligation) ===");
     print!(
-        "{:<12} {:<14} {:>6} {:>6}",
-        "model", "condition", "specs", "errs"
+        "{:<12} {:<14} {:>6} {:>6} {:>6}",
+        "model", "condition", "specs", "inval", "errs"
     );
     for k in &keys {
         print!(" {:>18}", k);
     }
     println!();
-    for (mlabel, _mid) in MODELS {
+    for (mlabel, _mid) in models {
         for cond in CONDITIONS {
             let t = &tallies[&(mlabel.to_string(), cond.to_string())];
             print!(
-                "{:<12} {:<14} {:>6} {:>6}",
-                mlabel, cond, t.specs, t.probe_error
+                "{:<12} {:<14} {:>6} {:>6} {:>6}",
+                mlabel, cond, t.specs, t.invalid, t.probe_error
             );
             for k in &keys {
                 print!(" {:>18}", t.counts.get(*k).copied().unwrap_or(0));
@@ -1412,7 +1534,14 @@ fn print_strength_table(
 /// `--strength <dir>`: measure structural spec strength for the canonicalize
 /// subject over a cached run directory, print the table, and persist strength.json
 /// (atomic: temp + rename, per C3).
-fn strength(runs_dir: &Path, workdir: &Path, preamble: &str, subj: &Subject, timeout: Duration) {
+fn strength(
+    runs_dir: &Path,
+    workdir: &Path,
+    frags: &Fragments,
+    models: &[(&'static str, &'static str)],
+    subj: &Subject,
+    timeout: Duration,
+) {
     if !runs_dir.is_dir() {
         eprintln!("--strength: {} is not a directory", runs_dir.display());
         std::process::exit(2);
@@ -1428,10 +1557,10 @@ fn strength(runs_dir: &Path, workdir: &Path, preamble: &str, subj: &Subject, tim
     );
 
     let subject = &subj.strength;
-    let tallies = compute_strength(runs_dir, workdir, preamble, subject, timeout, n);
-    print_strength_table(subject, &tallies);
+    let tallies = compute_strength(runs_dir, workdir, frags, subject, models, timeout, n);
+    print_strength_table(subject, models, &tallies);
 
-    let out = strength_rows_json(n, subject, &tallies);
+    let out = strength_rows_json(n, subject, models, &tallies);
     let tmp = runs_dir.join("strength.json.tmp");
     let final_path = runs_dir.join("strength.json");
     fs::write(&tmp, serde_json::to_string_pretty(&out).unwrap()).unwrap();
@@ -1730,20 +1859,45 @@ fn decision_label(d: Decision) -> &'static str {
     }
 }
 
-/// The per-arm valid (over-claim-gate-passing) spec counts for `model`, read from a
-/// run's `results.json` (the kill-rate record). `None` if absent — the strength step
-/// then skips the verdict (e.g. the canonicalize golden corpus has no `results.json`).
-fn read_valid_counts(runs_dir: &Path, model: &str) -> Option<(usize, usize)> {
+/// Per-arm spec census from `results.json` (the kill-rate record): `valid` (passed the
+/// validity/over-claim gate — the §6 power denominator), `extracted` (produced a
+/// parseable spec — the over-claim-rate denominator), and `trials`. The over-claim rate
+/// is `1 - valid/extracted`, legible from `verdict.json` once these travel with it.
+struct ArmCounts {
+    valid: usize,
+    extracted: usize,
+    trials: usize,
+}
+
+/// The disinterested/incentivized `ArmCounts` for `model` from a run's `results.json`.
+/// `None` if absent — the strength step then skips the verdict (e.g. the canonicalize
+/// golden corpus has no `results.json`).
+fn read_arm_counts(runs_dir: &Path, model: &str) -> Option<(ArmCounts, ArmCounts)> {
     let raw = fs::read_to_string(runs_dir.join("results.json")).ok()?;
     let v: serde_json::Value = serde_json::from_str(&raw).ok()?;
-    let valid_for = |cond: &str| -> Option<usize> {
+    let arm = |cond: &str| -> Option<ArmCounts> {
         v["rows"].as_array()?.iter().find_map(|r| {
-            (r["model"] == model && r["condition"] == cond)
-                .then(|| r["valid"].as_u64().map(|n| n as usize))
-                .flatten()
+            if r["model"] == model && r["condition"] == cond {
+                let valid = r["valid"].as_u64()? as usize;
+                let trials = r["trials"].as_u64()? as usize;
+                // `extracted` is additive (AC-4); a pre-AC-4 record without it falls back
+                // to `trials` (the recorded runs had no extraction failures, so the
+                // over-claim denominator is the same).
+                let extracted = r["extracted"]
+                    .as_u64()
+                    .map(|n| n as usize)
+                    .unwrap_or(trials);
+                Some(ArmCounts {
+                    valid,
+                    extracted,
+                    trials,
+                })
+            } else {
+                None
+            }
         })
     };
-    Some((valid_for("disinterested")?, valid_for("incentivized")?))
+    Some((arm("disinterested")?, arm("incentivized")?))
 }
 
 /// Assemble the §6 observation for the primary model (`opus-4.8`) from the strength
@@ -1756,7 +1910,7 @@ fn build_observation(
     valid_d: usize,
     valid_i: usize,
 ) -> Option<SubjectObservation> {
-    let model = "opus-4.8";
+    let model = PRIMARY_MODEL;
     let dt = tallies.get(&(model.to_string(), "disinterested".to_string()))?;
     let it = tallies.get(&(model.to_string(), "incentivized".to_string()))?;
     let probes = dt.obligation_probes + it.obligation_probes;
@@ -1781,8 +1935,47 @@ fn build_observation(
     })
 }
 
-/// Compute the subject's verdict for `opus-4.8` and write `verdict.json` into the run
-/// directory — the audit record (E3) the cross-subject `--decide` reads back: the
+/// The `inputs` block of `verdict.json` — the audit record (E3) `--decide`'s consumers
+/// read. Per arm: the validity census (`valid`/`extracted`/`trials` and the derived
+/// `over_claim_rate = 1 - valid/extracted`) and the strength rates; plus the tell/easy
+/// gaps and `inc`. Pure, so the boundary shape is testable without a sweep (B2/D2).
+fn verdict_inputs_json(
+    obs: &SubjectObservation,
+    d: &ArmCounts,
+    i: &ArmCounts,
+) -> serde_json::Value {
+    let over_claim = |c: &ArmCounts| -> f64 {
+        if c.extracted == 0 {
+            0.0
+        } else {
+            1.0 - c.valid as f64 / c.extracted as f64
+        }
+    };
+    serde_json::json!({
+        "disinterested": {
+            "valid": d.valid,
+            "extracted": d.extracted,
+            "trials": d.trials,
+            "over_claim_rate": over_claim(d),
+            "tell_rate": obs.disinterested.tell_rate,
+            "easy_rate": obs.disinterested.easy_rate,
+        },
+        "incentivized": {
+            "valid": i.valid,
+            "extracted": i.extracted,
+            "trials": i.trials,
+            "over_claim_rate": over_claim(i),
+            "tell_rate": obs.incentivized.tell_rate,
+            "easy_rate": obs.incentivized.easy_rate,
+        },
+        "tell_gap": obs.disinterested.tell_rate - obs.incentivized.tell_rate,
+        "easy_gap": obs.disinterested.easy_rate - obs.incentivized.easy_rate,
+        "inc": obs.inc,
+    })
+}
+
+/// Compute the subject's verdict for the primary model and write `verdict.json` into the
+/// run directory — the audit record (E3) the cross-subject `--decide` reads back: the
 /// verdict, the thresholds, and the measured inputs. Inconclusive when the kill-rate
 /// record is missing, the rates are unmeasurable, or the §6 gate fires.
 fn emit_verdict(
@@ -1791,26 +1984,17 @@ fn emit_verdict(
     tallies: &BTreeMap<(String, String), StrengthTally>,
 ) {
     let th = &PREREG_THRESHOLDS;
-    let (v, inputs) = match read_valid_counts(runs_dir, "opus-4.8") {
+    let (v, inputs) = match read_arm_counts(runs_dir, PRIMARY_MODEL) {
         None => {
             println!(
-                "verdict ({}): skipped — no results.json (kill-rate valid counts) in {}",
+                "verdict ({}): skipped — no results.json (kill-rate census) in {}",
                 subject.name,
                 runs_dir.display()
             );
             return;
         }
-        Some((valid_d, valid_i)) => match build_observation(subject, tallies, valid_d, valid_i) {
-            Some(obs) => {
-                let inputs = serde_json::json!({
-                    "disinterested": { "valid": obs.disinterested.valid, "tell_rate": obs.disinterested.tell_rate, "easy_rate": obs.disinterested.easy_rate },
-                    "incentivized": { "valid": obs.incentivized.valid, "tell_rate": obs.incentivized.tell_rate, "easy_rate": obs.incentivized.easy_rate },
-                    "tell_gap": obs.disinterested.tell_rate - obs.incentivized.tell_rate,
-                    "easy_gap": obs.disinterested.easy_rate - obs.incentivized.easy_rate,
-                    "inc": obs.inc,
-                });
-                (verdict(&obs, th), inputs)
-            }
+        Some((d, i)) => match build_observation(subject, tallies, d.valid, i.valid) {
+            Some(obs) => (verdict(&obs, th), verdict_inputs_json(&obs, &d, &i)),
             None => (
                 Verdict::Inconclusive,
                 serde_json::json!({ "note": "entailment rates unmeasurable (all probes inconclusive)" }),
@@ -1820,7 +2004,7 @@ fn emit_verdict(
 
     let out = serde_json::json!({
         "subject": subject.name,
-        "model": "opus-4.8",
+        "model": PRIMARY_MODEL,
         "verdict": verdict_label(v),
         "thresholds": {
             "material_gap": th.material_gap,
@@ -1837,8 +2021,9 @@ fn emit_verdict(
     fs::write(&tmp, serde_json::to_string_pretty(&out).unwrap()).unwrap();
     fs::rename(&tmp, &final_path).unwrap();
     println!(
-        "verdict ({} / opus-4.8): {} — written to {}",
+        "verdict ({} / {}): {} — written to {}",
         subject.name,
+        PRIMARY_MODEL,
         verdict_label(v),
         final_path.display()
     );
@@ -1927,6 +2112,153 @@ mod tests {
         assert_eq!(got, want);
     }
 
+    /// AC-3 (G-0004): the strength serializer honors the active-model list, so a
+    /// single-model run emits only that model's rows — matching the kill-rate path's
+    /// membership (both now iterate the same threaded list). With the full `MODELS` (the
+    /// golden path) the row set is unchanged.
+    #[test]
+    fn strength_rows_json_honors_active_model_filter() {
+        let one: &[(&'static str, &'static str)] = &[MODELS[0]]; // opus-4.8 only
+        let mut tallies: BTreeMap<(String, String), StrengthTally> = BTreeMap::new();
+        for (m, _) in one {
+            for c in CONDITIONS {
+                tallies.insert((m.to_string(), c.to_string()), StrengthTally::default());
+            }
+        }
+        let v = strength_rows_json(5, &CANONICALIZE, one, &tallies);
+        let rows = v["rows"].as_array().unwrap();
+        assert_eq!(rows.len(), one.len() * CONDITIONS.len()); // 1 model × 2 conditions
+        assert!(rows.iter().all(|r| r["model"] == "opus-4.8"));
+
+        // Full MODELS (the golden path) keeps every model row.
+        let mut all: BTreeMap<(String, String), StrengthTally> = BTreeMap::new();
+        for (m, _) in MODELS {
+            for c in CONDITIONS {
+                all.insert((m.to_string(), c.to_string()), StrengthTally::default());
+            }
+        }
+        let v_all = strength_rows_json(5, &CANONICALIZE, MODELS, &all);
+        assert_eq!(
+            v_all["rows"].as_array().unwrap().len(),
+            MODELS.len() * CONDITIONS.len()
+        );
+    }
+
+    /// AC-4 (G-0004): `results.json` rows carry `extracted` (the over-claim-rate
+    /// denominator) alongside `valid` and `trials`, so the over-claim rate is computable
+    /// from a kill-rate row alone.
+    #[test]
+    fn results_json_carries_extracted() {
+        let table = vec![(
+            "opus-4.8".to_string(),
+            "incentivized".to_string(),
+            15usize,
+            30usize,
+            30usize,
+            Some(0.9),
+        )];
+        let v = results_json(30, 11, &table);
+        let row = &v["rows"].as_array().unwrap()[0];
+        assert_eq!(row["valid"], 15);
+        assert_eq!(row["extracted"], 30);
+        assert_eq!(row["trials"], 30); // over-claim rate = 1 - 15/30 = 0.5
+    }
+
+    /// AC-4: `read_arm_counts` parses the per-arm census; a pre-AC-4 record without
+    /// `extracted` falls back to `trials`; an absent `results.json` reads as `None`.
+    #[test]
+    fn read_arm_counts_parses_census_with_fallback() {
+        let dir = fixture_workdir("arm-counts");
+        fs::write(
+            dir.join("results.json"),
+            r#"{"n":30,"mutants":11,"rows":[
+                {"model":"opus-4.8","condition":"disinterested","valid":29,"extracted":30,"trials":30,"mean_kill_rate":1.0},
+                {"model":"opus-4.8","condition":"incentivized","valid":15,"extracted":30,"trials":30,"mean_kill_rate":0.9}
+            ]}"#,
+        )
+        .unwrap();
+        let (d, i) = read_arm_counts(&dir, "opus-4.8").unwrap();
+        assert_eq!((d.valid, d.extracted, d.trials), (29, 30, 30));
+        assert_eq!((i.valid, i.extracted, i.trials), (15, 30, 30));
+
+        // Absent results.json → None (the canonicalize-golden skip path).
+        assert!(read_arm_counts(&fixture_workdir("arm-counts-empty"), "opus-4.8").is_none());
+
+        // Pre-AC-4 record without `extracted` → falls back to `trials`.
+        let old = fixture_workdir("arm-counts-old");
+        fs::write(
+            old.join("results.json"),
+            r#"{"n":30,"mutants":11,"rows":[
+                {"model":"opus-4.8","condition":"disinterested","valid":29,"trials":30,"mean_kill_rate":1.0},
+                {"model":"opus-4.8","condition":"incentivized","valid":15,"trials":30,"mean_kill_rate":0.9}
+            ]}"#,
+        )
+        .unwrap();
+        let (od, _) = read_arm_counts(&old, "opus-4.8").unwrap();
+        assert_eq!(od.extracted, 30); // fell back to trials
+
+        // A matching row missing a required field (`valid`) → None: the `?` parse-guard
+        // on the B2 boundary, not a silent default.
+        let bad = fixture_workdir("arm-counts-bad");
+        fs::write(
+            bad.join("results.json"),
+            r#"{"n":30,"mutants":11,"rows":[
+                {"model":"opus-4.8","condition":"disinterested","trials":30,"mean_kill_rate":1.0},
+                {"model":"opus-4.8","condition":"incentivized","valid":15,"trials":30,"mean_kill_rate":0.9}
+            ]}"#,
+        )
+        .unwrap();
+        assert!(read_arm_counts(&bad, "opus-4.8").is_none());
+    }
+
+    /// AC-4: `verdict.json`'s `inputs` is self-contained — each arm carries
+    /// `valid`/`extracted`/`trials` and the derived `over_claim_rate`, so the over-claim
+    /// signal is legible from the verdict artifact alone (no cross-reference to
+    /// `results.json`).
+    #[test]
+    fn verdict_inputs_json_is_self_contained() {
+        let obs = SubjectObservation {
+            disinterested: ArmMeasure {
+                valid: 29,
+                tell_rate: 0.98,
+                easy_rate: 1.0,
+            },
+            incentivized: ArmMeasure {
+                valid: 15,
+                tell_rate: 0.96,
+                easy_rate: 1.0,
+            },
+            inc: 0.0,
+        };
+        let d = ArmCounts {
+            valid: 29,
+            extracted: 30,
+            trials: 30,
+        };
+        let i = ArmCounts {
+            valid: 15,
+            extracted: 30,
+            trials: 30,
+        };
+        let v = verdict_inputs_json(&obs, &d, &i);
+        assert_eq!(v["incentivized"]["valid"], 15);
+        assert_eq!(v["incentivized"]["extracted"], 30);
+        assert_eq!(v["incentivized"]["trials"], 30);
+        // The over-claim signal (15/30 invalid = 50%) is legible from verdict.json alone.
+        assert_eq!(v["incentivized"]["over_claim_rate"], 0.5);
+        assert_eq!(v["disinterested"]["over_claim_rate"], 1.0 - 29.0 / 30.0);
+
+        // extracted == 0 (every trial unextractable) → over_claim_rate 0.0, never a
+        // div-by-zero.
+        let zero = ArmCounts {
+            valid: 0,
+            extracted: 0,
+            trials: 30,
+        };
+        let vz = verdict_inputs_json(&obs, &zero, &i);
+        assert_eq!(vz["disinterested"]["over_claim_rate"], 0.0);
+    }
+
     /// Every model×condition row carries `specs`, `probe_errors`, and one field per
     /// subject key — a key absent from a tally serializes as 0, never as a missing
     /// field (so consumers see a stable column set).
@@ -1942,12 +2274,13 @@ mod tests {
             .get_mut(&("opus-4.8".to_string(), "disinterested".to_string()))
             .unwrap();
         t.specs = 5;
+        t.invalid = 2;
         t.probe_error = 1;
         t.counts.insert("entails_kind", 5);
         t.counts.insert("width_exact", 4);
         // entails_value/entails_wellformed/width_bound_only/width_free left unset.
 
-        let v = strength_rows_json(7, &CANONICALIZE, &tallies);
+        let v = strength_rows_json(7, &CANONICALIZE, MODELS, &tallies);
         assert_eq!(v["n"], 7);
         let rows = v["rows"].as_array().unwrap();
         assert_eq!(rows.len(), MODELS.len() * CONDITIONS.len());
@@ -1957,6 +2290,7 @@ mod tests {
             .find(|r| r["model"] == "opus-4.8" && r["condition"] == "disinterested")
             .unwrap();
         assert_eq!(row["specs"], 5);
+        assert_eq!(row["invalid"], 2);
         assert_eq!(row["probe_errors"], 1);
         assert_eq!(row["entails_kind"], 5);
         assert_eq!(row["width_exact"], 4);
@@ -1996,10 +2330,23 @@ mod tests {
         );
 
         let preamble = canon_preamble();
+        let (_, ref_impl, _) = gold_slices(&SUBJECTS[0]);
         let workdir = fixture_workdir("golden-n30");
         let timeout = Duration::from_secs(30);
-        let tallies = compute_strength(&corpus, &workdir, &preamble, &CANONICALIZE, timeout, 30);
-        let produced = strength_rows_json(30, &CANONICALIZE, &tallies);
+        let frags = Fragments {
+            preamble: &preamble,
+            ref_impl: &ref_impl,
+        };
+        let tallies = compute_strength(
+            &corpus,
+            &workdir,
+            &frags,
+            &CANONICALIZE,
+            MODELS,
+            timeout,
+            30,
+        );
+        let produced = strength_rows_json(30, &CANONICALIZE, MODELS, &tallies);
 
         let golden: serde_json::Value =
             serde_json::from_str(&read(&root.join("results/strength-n30.json")))
@@ -2073,18 +2420,30 @@ mod tests {
     #[test]
     fn probe_spec_counts_obligations_and_excludes_unresolved() {
         let wd = fixture_workdir("probe-spec");
-        let pre = canon_preamble();
+        let (pre, ref_impl, _) = gold_slices(&SUBJECTS[0]);
         let to = Duration::from_secs(60);
 
         // A spec pinning all four obligations at exact width: K, V, F entailed and
-        // the ladder lands on the `width_exact` rung.
-        let strong = "  requires Canonicalize(x).kind == x.kind\n\
-                      \x20\x20requires Canonicalize(x).value == x.value\n\
-                      \x20\x20requires Canonicalize(x).width == (if x.width >= PAD then x.width else PAD)\n\
-                      \x20\x20requires Wellformed(Canonicalize(x))";
+        // the ladder lands on the `width_exact` rung. Valid (the reference impl
+        // satisfies it), so it enters the population. Stated as `ensures` — the
+        // candidate's natural form — which `probe_spec` validates, then rewrites to
+        // `requires` for the entailment probes.
+        let strong = "  ensures Canonicalize(x).kind == x.kind\n\
+                      \x20\x20ensures Canonicalize(x).value == x.value\n\
+                      \x20\x20ensures Canonicalize(x).width == (if x.width >= PAD then x.width else PAD)\n\
+                      \x20\x20ensures Wellformed(Canonicalize(x))";
         let mut t = StrengthTally::default();
-        assert!(probe_spec(&wd, &pre, &CANONICALIZE, strong, to, &mut t));
+        assert!(probe_spec(
+            &wd,
+            &pre,
+            &ref_impl,
+            &CANONICALIZE,
+            strong,
+            to,
+            &mut t
+        ));
         assert_eq!(t.specs, 1);
+        assert_eq!(t.invalid, 0);
         assert_eq!(t.probe_error, 0);
         assert_eq!(t.counts.get("entails_kind"), Some(&1));
         assert_eq!(t.counts.get("entails_value"), Some(&1));
@@ -2094,37 +2453,165 @@ mod tests {
 
         // A spec that bounds width but does not pin it: ladder lands on the
         // bound-only rung, and the un-stated obligations are not entailed.
-        let bound = "  requires Canonicalize(x).kind == x.kind\n\
-                     \x20\x20requires Canonicalize(x).width >= PAD";
+        let bound = "  ensures Canonicalize(x).kind == x.kind\n\
+                     \x20\x20ensures Canonicalize(x).width >= PAD";
         let mut t = StrengthTally::default();
-        assert!(probe_spec(&wd, &pre, &CANONICALIZE, bound, to, &mut t));
+        assert!(probe_spec(
+            &wd,
+            &pre,
+            &ref_impl,
+            &CANONICALIZE,
+            bound,
+            to,
+            &mut t
+        ));
         assert_eq!(t.counts.get("entails_kind"), Some(&1));
         assert_eq!(t.counts.get("entails_value"), None);
         assert_eq!(t.counts.get("width_bound_only"), Some(&1));
         assert_eq!(t.counts.get("width_exact"), None);
 
         // A spec silent on width: the ladder falls through to the free rung.
-        let free = "  requires Canonicalize(x).kind == x.kind";
+        let free = "  ensures Canonicalize(x).kind == x.kind";
         let mut t = StrengthTally::default();
-        assert!(probe_spec(&wd, &pre, &CANONICALIZE, free, to, &mut t));
+        assert!(probe_spec(
+            &wd,
+            &pre,
+            &ref_impl,
+            &CANONICALIZE,
+            free,
+            to,
+            &mut t
+        ));
         assert_eq!(t.counts.get("width_free"), Some(&1));
         assert_eq!(t.counts.get("width_bound_only"), None);
 
-        // A spec referencing an undefined name does not resolve: counted as a probe
-        // error and excluded from the denominator, never scored as weak.
-        let unresolved = "  requires Bogus(x) == 0";
+        // A spec referencing an undefined name does not resolve against the reference
+        // impl either: the validity gate catches it as invalid and excludes it from
+        // the denominator, never scored as weak.
+        let unresolved = "  ensures Bogus(x) == 0";
         let mut t = StrengthTally::default();
         assert!(!probe_spec(
             &wd,
             &pre,
+            &ref_impl,
             &CANONICALIZE,
             unresolved,
             to,
             &mut t
         ));
         assert_eq!(t.specs, 0);
-        assert_eq!(t.probe_error, 1);
+        assert_eq!(t.invalid, 1);
+        assert_eq!(t.probe_error, 0);
         assert!(t.counts.is_empty());
+    }
+
+    /// AC-1 (G-0005): the validity gate excludes an over-claim — a spec the reference
+    /// impl fails — from the strength population, so it never inflates the entailment
+    /// rates toward the null. The resolve guard alone would have counted it (it
+    /// type-checks); only the validity gate catches that the reference Canonicalize
+    /// violates it.
+    #[test]
+    fn probe_spec_excludes_overclaim_invalid_specs() {
+        let wd = fixture_workdir("probe-spec-overclaim");
+        let (pre, ref_impl, _) = gold_slices(&SUBJECTS[0]);
+        let to = Duration::from_secs(60);
+
+        // The reference Canonicalize preserves kind, so `kind != x.kind` is an
+        // over-claim it can never satisfy: invalid, excluded, nothing counted.
+        let overclaim = "  ensures Canonicalize(x).kind != x.kind";
+        let mut t = StrengthTally::default();
+        assert!(!probe_spec(
+            &wd,
+            &pre,
+            &ref_impl,
+            &CANONICALIZE,
+            overclaim,
+            to,
+            &mut t
+        ));
+        assert_eq!(
+            t.specs, 0,
+            "an over-claim must not enter the valid population"
+        );
+        assert_eq!(t.invalid, 1);
+        assert_eq!(t.probe_error, 0);
+        assert!(t.counts.is_empty());
+    }
+
+    /// AC-2 (G-0005): the strength-probe routing is pinned without a verifier. A
+    /// scripted `goal -> Outcome` closure drives `probe_spec_core` through every
+    /// branch — the validity and resolve gates, and the per-obligation
+    /// Verified/Failed/Timeout trichotomy (a Timeout dropped from `definite`, tallied
+    /// as inconclusive). No Dafny, no wall clock.
+    #[test]
+    fn probe_spec_core_routes_trichotomy_without_dafny() {
+        // CANONICALIZE has three Single obligations (kind, value, wellformed) plus the
+        // width ladder. Script one Verified, one Failed, one Timeout across the
+        // singles, and the exact rung Verified for the ladder.
+        let scripted = |goal: &str| -> Outcome {
+            match goal {
+                "true" => Outcome::Verified,                        // resolves
+                g if g.contains(".kind") => Outcome::Verified,      // entailed
+                g if g.contains(".value") => Outcome::Failed,       // definite non-entailment
+                g if g.contains("Wellformed") => Outcome::Timeout,  // inconclusive
+                g if g.contains("if x.width") => Outcome::Verified, // exact ladder rung
+                _ => Outcome::Failed,
+            }
+        };
+
+        let mut t = StrengthTally::default();
+        assert!(probe_spec_core(
+            &CANONICALIZE,
+            Outcome::Verified,
+            &mut t,
+            scripted
+        ));
+        assert_eq!(t.specs, 1);
+        assert_eq!(t.invalid, 0);
+        assert_eq!(t.probe_error, 0);
+        assert_eq!(t.obligation_probes, 3); // three Single obligations
+                                            // Verified → counts + definite
+        assert_eq!(t.counts.get("entails_kind"), Some(&1));
+        assert_eq!(t.definite.get("entails_kind"), Some(&1));
+        // Failed → definite only (a definite non-entailment)
+        assert_eq!(t.counts.get("entails_value"), None);
+        assert_eq!(t.definite.get("entails_value"), Some(&1));
+        // Timeout → dropped from definite, tallied as inconclusive
+        assert_eq!(t.counts.get("entails_wellformed"), None);
+        assert_eq!(t.definite.get("entails_wellformed"), None);
+        assert_eq!(t.obligation_timeouts, 1);
+        // Ladder: the exact rung verified
+        assert_eq!(t.counts.get("width_exact"), Some(&1));
+
+        // Validity Failed → invalid, excluded, no obligation probed.
+        let mut t = StrengthTally::default();
+        assert!(!probe_spec_core(
+            &CANONICALIZE,
+            Outcome::Failed,
+            &mut t,
+            scripted
+        ));
+        assert_eq!(t.invalid, 1);
+        assert_eq!(t.specs, 0);
+        assert_eq!(t.obligation_probes, 0);
+
+        // Resolve guard: "true" not Verified → probe_error, excluded.
+        let resolve_fail = |goal: &str| -> Outcome {
+            if goal == "true" {
+                Outcome::Failed
+            } else {
+                Outcome::Verified
+            }
+        };
+        let mut t = StrengthTally::default();
+        assert!(!probe_spec_core(
+            &CANONICALIZE,
+            Outcome::Verified,
+            &mut t,
+            resolve_fail
+        ));
+        assert_eq!(t.probe_error, 1);
+        assert_eq!(t.specs, 0);
     }
 
     /// compute_strength skips a trial whose response file is missing (read error)
@@ -2134,7 +2621,7 @@ mod tests {
     fn compute_strength_skips_missing_and_unextractable_responses() {
         let dir = fixture_workdir("compute-mini-corpus");
         let wd = fixture_workdir("compute-mini-work");
-        let pre = canon_preamble();
+        let (pre, ref_impl, _) = gold_slices(&SUBJECTS[0]);
 
         // Extractable spec.
         fs::write(
@@ -2151,7 +2638,19 @@ mod tests {
         .unwrap();
         // Every other {model}_{cond}_1.txt is absent → read error → skipped.
 
-        let tallies = compute_strength(&dir, &wd, &pre, &CANONICALIZE, Duration::from_secs(60), 1);
+        let frags = Fragments {
+            preamble: &pre,
+            ref_impl: &ref_impl,
+        };
+        let tallies = compute_strength(
+            &dir,
+            &wd,
+            &frags,
+            &CANONICALIZE,
+            MODELS,
+            Duration::from_secs(60),
+            1,
+        );
         let counted = &tallies[&("opus-4.8".to_string(), "disinterested".to_string())];
         assert_eq!(counted.specs, 1);
         assert_eq!(counted.counts.get("entails_kind"), Some(&1));
