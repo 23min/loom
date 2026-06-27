@@ -17,6 +17,10 @@ acs:
       title: Kill-rate and strength outputs agree on model row membership
       status: open
       tdd_phase: red
+    - id: AC-4
+      title: verdict.json is self-contained with per-arm valid, extracted, trials
+      status: open
+      tdd_phase: red
 ---
 
 ## Goal
@@ -28,4 +32,6 @@ acs:
 ### AC-2 — probe_spec outcome routing is unit-testable without Dafny
 
 ### AC-3 — Kill-rate and strength outputs agree on model row membership
+
+### AC-4 — verdict.json is self-contained with per-arm valid, extracted, trials
 
