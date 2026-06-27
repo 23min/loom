@@ -1,8 +1,10 @@
 ---
 id: G-0005
 title: Gate strength population to valid specs; unit-test probe_spec trichotomy
-status: open
+status: addressed
 discovered_in: M-0006
+addressed_by:
+    - M-0008
 ---
 
 ## What's missing
