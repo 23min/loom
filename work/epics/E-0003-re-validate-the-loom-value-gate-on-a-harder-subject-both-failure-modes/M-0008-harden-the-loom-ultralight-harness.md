@@ -13,6 +13,10 @@ acs:
       title: probe_spec outcome routing is unit-testable without Dafny
       status: open
       tdd_phase: red
+    - id: AC-3
+      title: Kill-rate and strength outputs agree on model row membership
+      status: open
+      tdd_phase: red
 ---
 
 ## Goal
@@ -22,4 +26,6 @@ acs:
 ### AC-1 — Strength entailment population is the valid population
 
 ### AC-2 — probe_spec outcome routing is unit-testable without Dafny
+
+### AC-3 — Kill-rate and strength outputs agree on model row membership
 
