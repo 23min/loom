@@ -136,7 +136,7 @@ not-reproduced; `combine()` (oracle test `combine_matches_preregistered_truth_ta
   make `verdict.json` self-contained (carry the per-arm validity rate).
 - **G-0005** — gate the strength entailment population to valid specs (close the dormant
   ex-falso confound) and make `probe_spec`'s timeout routing unit-testable. Both feed the
-  E-0003 successor study.
+  successor (harder-subject) study.
 
 ## Reviewer notes
 
@@ -154,7 +154,8 @@ Findings applied in place: corrected the `active_models()` doc comment (it wrong
 scoring iterates all models — `results.json` is opus-only while `strength.json` carries all
 three) and the stale module header. Findings deferred to **G-0004** / **G-0005**. The
 ex-falso confound was dormant this run (the fsm over-claims surfaced as probe errors, so the
-strength population equalled the valid population) and is a pre-registration note for E-0003.
+strength population equalled the valid population) and is a pre-registration note for the
+successor study.
 
 ### AC-1 — Both arms run on both subjects, scored by kill-rate and structural strength
 
