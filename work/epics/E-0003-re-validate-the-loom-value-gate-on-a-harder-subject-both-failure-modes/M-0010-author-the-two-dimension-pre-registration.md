@@ -9,7 +9,7 @@ tdd: required
 acs:
     - id: AC-1
       title: Each dimension is scored by a committed, threshold-pinned function
-      status: open
+      status: met
       tdd_phase: done
     - id: AC-2
       title: The combination rule is total and matches an independent oracle
