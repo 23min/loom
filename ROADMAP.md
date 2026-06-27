@@ -52,4 +52,5 @@ modes, not just one.
 |---|---|---|
 | M-0008 | Harden the loom-ultralight harness | done |
 | M-0009 | Design the id-reallocation subject | done |
+| M-0010 | Author the two-dimension pre-registration | draft |
 
