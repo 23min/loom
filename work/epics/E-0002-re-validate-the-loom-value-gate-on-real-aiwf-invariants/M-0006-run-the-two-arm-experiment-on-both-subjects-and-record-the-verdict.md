@@ -12,7 +12,7 @@ acs:
       status: met
     - id: AC-2
       title: Prereg and combination-rule SHAs verified as git ancestors of the run commit
-      status: open
+      status: met
     - id: AC-3
       title: verdict() and combine() yield a recorded go/no-go Decision
       status: open
