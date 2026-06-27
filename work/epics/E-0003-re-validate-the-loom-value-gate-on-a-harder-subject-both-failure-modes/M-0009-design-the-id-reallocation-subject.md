@@ -1,7 +1,7 @@
 ---
 id: M-0009
 title: Design the id-reallocation subject
-status: in_progress
+status: done
 parent: E-0003
 depends_on:
     - M-0008
