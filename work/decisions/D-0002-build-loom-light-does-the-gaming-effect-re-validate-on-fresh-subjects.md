@@ -1,7 +1,7 @@
 ---
 id: D-0002
 title: Build loom-light — does the gaming effect re-validate on fresh subjects?
-status: proposed
+status: accepted
 relates_to:
     - E-0002
     - M-0006
