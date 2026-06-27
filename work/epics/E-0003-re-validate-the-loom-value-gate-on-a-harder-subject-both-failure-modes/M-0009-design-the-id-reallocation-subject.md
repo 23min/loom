@@ -10,7 +10,7 @@ acs:
     - id: AC-1
       title: Gold spec verifies against the reference impl within timeout
       status: open
-      tdd_phase: red
+      tdd_phase: green
     - id: AC-2
       title: Obligation set is pinned to the gold ensures and ranks a weaker spec lower
       status: open
