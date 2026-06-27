@@ -8,7 +8,7 @@ acs:
     - id: AC-1
       title: Strength entailment population is the valid population
       status: open
-      tdd_phase: green
+      tdd_phase: done
     - id: AC-2
       title: probe_spec outcome routing is unit-testable without Dafny
       status: open
