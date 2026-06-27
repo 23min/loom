@@ -53,5 +53,6 @@ modes, not just one.
 | M-0008 | Harden the loom-ultralight harness | done |
 | M-0009 | Design the id-reallocation subject | done |
 | M-0010 | Author the two-dimension pre-registration | done |
-| M-0011 | Run the reallocate sweep and record the terminal decision | draft |
+| M-0011 | Run the reallocate sweep and record the terminal decision | in_progress |
+| M-0012 | Harden the validity gate for executable-spec subjects | draft |
 
