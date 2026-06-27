@@ -17,7 +17,7 @@ acs:
       tdd_phase: done
     - id: AC-3
       title: The reallocate §6 prediction map is committed and frozen
-      status: open
+      status: met
       tdd_phase: done
     - id: AC-4
       title: The pre-registration document is committed, ancestry-verifiable
