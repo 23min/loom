@@ -14,7 +14,7 @@ acs:
     - id: AC-2
       title: Obligation set is pinned to the gold ensures and ranks a weaker spec lower
       status: open
-      tdd_phase: red
+      tdd_phase: green
     - id: AC-3
       title: Mutant bank is clause-isolated and fully killed by the gold spec
       status: open
