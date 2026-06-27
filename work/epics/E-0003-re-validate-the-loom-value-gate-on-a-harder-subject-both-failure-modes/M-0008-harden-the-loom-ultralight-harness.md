@@ -15,7 +15,7 @@ acs:
       tdd_phase: done
     - id: AC-3
       title: Kill-rate and strength outputs agree on model row membership
-      status: open
+      status: met
       tdd_phase: done
     - id: AC-4
       title: verdict.json is self-contained with per-arm valid, extracted, trials
