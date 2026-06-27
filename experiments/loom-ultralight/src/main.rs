@@ -1082,6 +1082,44 @@ const PROSEY_SUBJECT: StrengthSubject = StrengthSubject {
     ],
 };
 
+/// The id-reallocation subject (M-0009): a model of `aiwf reallocate` over a tree of
+/// entities (each an id + a sequence of referenced ids). The gold contract is the
+/// COMPLETE pointwise pin — the renamed entity becomes `newId` (R), every other id is
+/// unchanged (F), and every reference is rewritten (C) — pinned equal to
+/// `reallocate.dfy`'s GOLD SPEC ENSURES by `reallocate_subject_goals_match_gold_ensures`.
+/// The pin entails the structural invariants (no orphaned `oldId`, preserved uniqueness),
+/// which are therefore proven as consequence lemmas rather than sliced as obligations —
+/// stating them alongside the pin would be redundant. `opaque_decls` declares ONLY the
+/// opaque `Reallocate`; `Id`/`Entity`/`Tree`/`HasId`/`Valid`/`Rw`/`RwRefs` come from the
+/// preamble the strength probe prepends. The binder quantifies the function's whole
+/// domain `(t, oldId, newId)` under the reallocation precondition (target present, target
+/// distinct from a fresh `newId`, ids unique). The opaque function exposes
+/// `|result| == |t|` (length, not contents) so the per-entity obligations
+/// `Reallocate(...)[i]` are well-formed against the hidden body; length-preservation is
+/// not an obligation, so it never leaks into the {R, F, C} measure.
+const REALLOCATE: StrengthSubject = StrengthSubject {
+    opaque_decls: "function {:opaque} Reallocate(t: Tree, oldId: Id, newId: Id): Tree\n  ensures |Reallocate(t, oldId, newId)| == |t|\n{ t }",
+    binder: "t: Tree, oldId: Id, newId: Id",
+    requires: "  requires oldId != newId\n  requires Valid(t)\n  requires HasId(t, oldId)\n  requires !HasId(t, newId)",
+    obligations: &[
+        // (R) the renamed entity becomes newId. Control.
+        Obligation::Single {
+            key: "target_renamed",
+            goal: "forall i :: 0 <= i < |t| && t[i].id == oldId ==> Reallocate(t, oldId, newId)[i].id == newId",
+        },
+        // (F) every other entity's id is unchanged — the frame. Control.
+        Obligation::Single {
+            key: "others_unchanged",
+            goal: "forall i :: 0 <= i < |t| && t[i].id != oldId ==> Reallocate(t, oldId, newId)[i].id == t[i].id",
+        },
+        // (C) every cross-reference is rewritten oldId -> newId, everywhere. The tell.
+        Obligation::Single {
+            key: "refs_rewritten",
+            goal: "forall i :: 0 <= i < |t| ==> Reallocate(t, oldId, newId)[i].refs == RwRefs(t[i].refs, oldId, newId)",
+        },
+    ],
+};
+
 /// The canonicalize mutant bank lives in the `MUTANTS` const (above); the two E-0002
 /// banks are clause-isolated one-per-obligation sets, calibrated by `fsm_*` /
 /// `prosey_*` and listed here in report order for the production scorer.
@@ -1089,6 +1127,18 @@ const FSM_MUTANTS: &[&str] = &[
     "ml1", "ml2", "ml3", "ml4", "mxskip", "mxcross", "mt1", "mt2", "mt3", "md1", "md2",
 ];
 const PROSEY_MUTANTS: &[&str] = &["mlen", "mnl", "mmd", "mlink", "mms_drop", "mms_nocap"];
+/// The reallocate bank (M-0009): a clause-isolated mutant per gold obligation, plus a
+/// sharper second C-violator. `m_leave_old` breaks R (target keeps oldId), `m_collapse_ids`
+/// breaks F (clobbers a non-target id), `m_keep_refs` breaks C (rewrites no reference), and
+/// `m_partial_refs` breaks C (rewrites only the renamed entity's refs — the realistic
+/// "forgot the distant cross-references" failure). Each is killed by its clause and
+/// survives the gold with that clause removed (`reallocate_mutants_are_clause_isolated`).
+const REALLOCATE_MUTANTS: &[&str] = &[
+    "m_leave_old",
+    "m_collapse_ids",
+    "m_keep_refs",
+    "m_partial_refs",
+];
 
 /// A complete experiment subject — everything the run + score + verdict pipeline needs
 /// that varies per invariant. The canonicalize subject (M-0002) plus the two E-0002
@@ -1167,6 +1217,19 @@ const SUBJECTS: &[Subject] = &[
         strength: PROSEY_SUBJECT,
         tell_keys: &["ms_present", "ms_needs_capital"],
         easy_keys: &["over_length", "newline", "markdown", "link_bracket"],
+    },
+    Subject {
+        name: "reallocate",
+        gold_file: "reallocate.dfy",
+        mutants_dir: "mutants-reallocate",
+        mutants: REALLOCATE_MUTANTS,
+        impl_signature: "function Reallocate(t: Tree, oldId: Id, newId: Id): Tree",
+        intent_file: "intent-reallocate.md",
+        strength: REALLOCATE,
+        // reallocate's tell is the cross-reference rewrite; its control is the id map
+        // (the target rename and the frame).
+        tell_keys: &["refs_rewritten"],
+        easy_keys: &["target_renamed", "others_unchanged"],
     },
 ];
 
@@ -3299,6 +3362,220 @@ mod tests {
     fn fsm_subject_goals_match_gold_ensures() {
         let dfy = read(&root().join("fsm.dfy"));
         assert_eq!(subject_goals(&FSM_SUBJECT), gold_ensures_goals(&dfy));
+    }
+
+    // ===== M-0009: the id-reallocation subject =====
+
+    /// The reallocate preamble (Id/Entity/Tree/HasId/Valid/Rw/RwRefs), sliced from the
+    /// subject file — what the REALLOCATE probes are stated against.
+    fn realloc_preamble() -> String {
+        let dfy = read(&root().join("reallocate.dfy"));
+        slice_between(&dfy, "// === BEGIN PREAMBLE ===", "// === END PREAMBLE ===")
+            .expect("preamble sentinels in reallocate.dfy")
+    }
+
+    // The gold spec in requires-form (what the probe assumes), and a weakened spec that
+    // pins the two controls (the id map: rename + frame) but drops the reference-rewrite
+    // tell — the predicted under-specification.
+    const REALLOCATE_FULL_SPEC: &str = "  requires forall i :: 0 <= i < |t| && t[i].id == oldId ==> Reallocate(t, oldId, newId)[i].id == newId\n  requires forall i :: 0 <= i < |t| && t[i].id != oldId ==> Reallocate(t, oldId, newId)[i].id == t[i].id\n  requires forall i :: 0 <= i < |t| ==> Reallocate(t, oldId, newId)[i].refs == RwRefs(t[i].refs, oldId, newId)";
+    const REALLOCATE_NO_REFS: &str = "  requires forall i :: 0 <= i < |t| && t[i].id == oldId ==> Reallocate(t, oldId, newId)[i].id == newId\n  requires forall i :: 0 <= i < |t| && t[i].id != oldId ==> Reallocate(t, oldId, newId)[i].id == t[i].id";
+    // pins the frame + refs but NOT the rename — the design-review pathology (target
+    // left at a wrong id); must be refuted on R, proving the rename is scored.
+    const REALLOCATE_NO_RENAME: &str = "  requires forall i :: 0 <= i < |t| && t[i].id != oldId ==> Reallocate(t, oldId, newId)[i].id == t[i].id\n  requires forall i :: 0 <= i < |t| ==> Reallocate(t, oldId, newId)[i].refs == RwRefs(t[i].refs, oldId, newId)";
+
+    /// The reallocate gate's obligation goals are exactly its gold's `ensures` (M-0009) —
+    /// the C1/D2 seam, guarded against drift like fsm/prosey.
+    #[test]
+    fn reallocate_subject_goals_match_gold_ensures() {
+        let dfy = read(&root().join("reallocate.dfy"));
+        assert_eq!(subject_goals(&REALLOCATE), gold_ensures_goals(&dfy));
+    }
+
+    /// AC-1: the reallocate gold spec validates against the reference impl within the
+    /// timeout — the tractability gate (the quantified frame conditions discharge under
+    /// an empty-body lemma, the shape the harness assembles).
+    #[test]
+    fn reallocate_gold_spec_is_valid_against_reference_impl() {
+        let subject = subject_by_name("reallocate").unwrap();
+        let (preamble, ref_impl, gold_ensures) = gold_slices(subject);
+        let wd = fixture_workdir("realloc-valid");
+        let o = validate_spec(
+            &wd,
+            &preamble,
+            &ref_impl,
+            &subject.strength,
+            &gold_ensures,
+            Duration::from_secs(30),
+        );
+        assert!(
+            o == Outcome::Verified,
+            "reallocate gold spec must validate against the reference impl (got {})",
+            outcome_label(o)
+        );
+    }
+
+    /// AC-2: the strength measure ranks a weaker spec lower — the gold entails every
+    /// obligation; a spec that drops the reference-rewrite tell still entails the two
+    /// controls (the id map: rename + frame) but NOT the tell, so it lands strictly weaker.
+    #[test]
+    fn reallocate_strength_ranks_weaker_spec_lower() {
+        let pre = realloc_preamble();
+        let wd = fixture_workdir("realloc-rank");
+        let to = Duration::from_secs(30);
+        for ob in REALLOCATE.obligations {
+            let (key, goal) = match ob {
+                Obligation::Single { key, goal } => (*key, *goal),
+                Obligation::Ladder { .. } => {
+                    unreachable!("reallocate uses only Single obligations")
+                }
+            };
+            assert!(
+                entails(&wd, &pre, &REALLOCATE, REALLOCATE_FULL_SPEC, goal, to),
+                "full spec should entail {key}"
+            );
+        }
+        // the no-refs spec still entails the two controls (the id map) ...
+        assert!(entails(
+            &wd,
+            &pre,
+            &REALLOCATE,
+            REALLOCATE_NO_REFS,
+            "forall i :: 0 <= i < |t| && t[i].id == oldId ==> Reallocate(t, oldId, newId)[i].id == newId",
+            to
+        ));
+        assert!(entails(
+            &wd,
+            &pre,
+            &REALLOCATE,
+            REALLOCATE_NO_REFS,
+            "forall i :: 0 <= i < |t| && t[i].id != oldId ==> Reallocate(t, oldId, newId)[i].id == t[i].id",
+            to
+        ));
+        // ... but NOT the reference-rewrite tell — strictly weaker.
+        assert!(refutes(
+            &wd,
+            &pre,
+            &REALLOCATE,
+            REALLOCATE_NO_REFS,
+            "forall i :: 0 <= i < |t| ==> Reallocate(t, oldId, newId)[i].refs == RwRefs(t[i].refs, oldId, newId)"
+        ));
+        // and a spec that omits the rename (the design-review pathology — target left
+        // at a wrong id) is refuted on R: the rename is a visible, load-bearing
+        // obligation, not free under the complete pin.
+        assert!(refutes(
+            &wd,
+            &pre,
+            &REALLOCATE,
+            REALLOCATE_NO_RENAME,
+            "forall i :: 0 <= i < |t| && t[i].id == oldId ==> Reallocate(t, oldId, newId)[i].id == newId"
+        ));
+    }
+
+    /// AC-3 + AC-5: the gold spec validates and kills the full reallocate bank cleanly
+    /// through the production scorer (the registry path the run uses) — valid, every
+    /// mutant killed, no survivor, no timeout.
+    #[test]
+    fn reallocate_gold_calibrates_clean() {
+        let subject = subject_by_name("reallocate").unwrap();
+        let (preamble, ref_impl, gold_ensures) = gold_slices(subject);
+        let mutants = load_mutants(&root(), subject);
+        let wd = fixture_workdir("realloc-calibrate");
+        let s = score_spec(
+            &wd,
+            &preamble,
+            &ref_impl,
+            subject,
+            &mutants,
+            &gold_ensures,
+            Duration::from_secs(30),
+        );
+        assert!(s.valid, "gold invalid: {}", s.note);
+        let bank = subject.mutants.len();
+        assert_eq!(
+            (s.killed, s.survived, s.inconclusive),
+            (bank, 0, 0),
+            "expected a clean {bank}/{bank} kill"
+        );
+    }
+
+    /// AC-3 (isolation, the G-0001/G-0003 discipline): every reallocate mutant breaks
+    /// EXACTLY ONE gold clause — killed by the full gold, but surviving the gold with
+    /// its own clause removed, so each clause is load-bearing (no dead weight, no kill
+    /// the bank can't attribute to a specific obligation).
+    #[test]
+    fn reallocate_mutants_are_clause_isolated() {
+        let subject = subject_by_name("reallocate").unwrap();
+        let preamble = realloc_preamble();
+        let mutants = load_mutants(&root(), subject);
+        let (binder, requires) = (REALLOCATE.binder, REALLOCATE.requires);
+        let wd = fixture_workdir("realloc-isolate");
+        let to = Duration::from_secs(30);
+        let goal_of = |k: &str| -> &'static str {
+            REALLOCATE
+                .obligations
+                .iter()
+                .find_map(|o| match o {
+                    Obligation::Single { key, goal } if *key == k => Some(*goal),
+                    _ => None,
+                })
+                .unwrap()
+        };
+        let ens = |keys: &[&str]| {
+            keys.iter()
+                .map(|k| format!("  ensures {}", goal_of(k)))
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+        let probe = |body: &str, keys: &[&str]| {
+            let f = wd.join("_realloc_iso.dfy");
+            fs::write(&f, assemble(&preamble, body, &ens(keys), binder, requires)).unwrap();
+            run_dafny(&f, to).0
+        };
+        let all = ["target_renamed", "others_unchanged", "refs_rewritten"];
+        // (mutant, the single clause it must break)
+        let cases: &[(&str, &str)] = &[
+            ("m_leave_old", "target_renamed"),
+            ("m_collapse_ids", "others_unchanged"),
+            ("m_keep_refs", "refs_rewritten"),
+            ("m_partial_refs", "refs_rewritten"),
+        ];
+        for (mutant, breaks) in cases {
+            let body = &mutants[*mutant];
+            assert!(
+                probe(body, &all) == Outcome::Failed,
+                "{mutant} must be killed by the full gold"
+            );
+            let without: Vec<&str> = all.iter().copied().filter(|k| k != breaks).collect();
+            assert!(
+                probe(body, &without) == Outcome::Verified,
+                "{mutant} must survive the gold without {breaks} (so {breaks} is load-bearing)"
+            );
+        }
+    }
+
+    /// AC-4: an over-claim — a spec too strong for the correct impl (here "references are
+    /// unchanged", the exact opposite of the rewrite the impl performs) — is caught by
+    /// the single-source validity gate (non-Verified ⇒ counted invalid, excluded). The
+    /// over-claiming failure mode is detectable on this subject.
+    #[test]
+    fn reallocate_over_claim_is_caught_by_validity_gate() {
+        let subject = subject_by_name("reallocate").unwrap();
+        let (preamble, ref_impl, _gold) = gold_slices(subject);
+        let wd = fixture_workdir("realloc-overclaim");
+        let over =
+            "  ensures forall i :: 0 <= i < |t| ==> Reallocate(t, oldId, newId)[i].refs == t[i].refs";
+        let o = validate_spec(
+            &wd,
+            &preamble,
+            &ref_impl,
+            &subject.strength,
+            over,
+            Duration::from_secs(30),
+        );
+        assert!(
+            o != Outcome::Verified,
+            "an over-claim must fail the validity gate (counted invalid)"
+        );
     }
 
     // ===== M-0007: the combination rule is total and matches the pre-registration =====

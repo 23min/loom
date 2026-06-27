@@ -256,3 +256,60 @@ fixtures are untouched.
   ("references unchanged") is the exact mirror of the tell (`C`). Recorded here
   rather than as a separate decision entity — a within-milestone refinement
   (including the review correction), not an architectural change.
+
+## Work log
+
+- **AC-1** — `reallocate.dfy` gold verifies against the reference impl in ~2s
+  (budget 30s); pinned by `reallocate_gold_spec_is_valid_against_reference_impl`.
+  Tractability retired emphatically — the quantified tree-rewrite contract is well
+  inside Z3's decidable regime.
+- **AC-2** — obligation goals pinned to the gold ensures
+  (`reallocate_subject_goals_match_gold_ensures`); the measure ranks a spec dropping
+  the tell — or the rename — strictly lower (`reallocate_strength_ranks_weaker_spec_lower`).
+- **AC-3** — 4-mutant clause-isolated bank, gold kills all cleanly; each clause
+  load-bearing (`reallocate_gold_calibrates_clean`, `reallocate_mutants_are_clause_isolated`).
+- **AC-4** — the "references unchanged" over-claim is caught by the validity gate
+  (`reallocate_over_claim_is_caught_by_validity_gate`).
+- **AC-5** — `reallocate` registered in `SUBJECTS`; `LOOM_SUBJECT=reallocate
+  --calibrate` green; covered through the production path by
+  `production_scorer_calibrates_every_subject`.
+
+The implementation landed in the single wrap commit; the spec, AC phases, and
+milestone status are their own trailered aiwf commits. Phase timeline in
+`aiwf history M-0009/AC-<N>`.
+
+## Validation
+
+- `LOOM_SUBJECT=reallocate --calibrate`: gold valid, **4/4 killed**, 0 survived, 0
+  inconclusive.
+- `dafny verify reallocate.dfy`: 7 verified, 0 errors (~2s).
+- `cargo test` (full non-ignored): **37 passed, 0 failed**; reallocate suite 6/6.
+- `cargo test production_scorer_calibrates_every_subject --ignored`: every
+  registered subject (incl. reallocate) calibrates clean via the production path.
+- `cargo clippy --all-targets -- -D warnings`: clean. `cargo fmt --check`: clean.
+- No regression: canonicalize / fsm / prosey rows and goldens untouched (the diff
+  is additive — a new registry entry, gold `.dfy`, and mutant dir).
+
+## Reviewer notes
+
+- **Two-lens independent review** (fresh-context subagents). Code-quality:
+  **APPROVE**, verified by perturbation (mutating the gold / each mutant drives the
+  expected test red). Design: initially **CONCERNS** — the first-cut gold
+  `{O, U, C}` omitted reallocation's defining property (rename → `newId`),
+  permitting a wrong-id impl and risking the G-0002 richer-spec-invisibility pattern.
+- **Resolved in this milestone, not deferred:** switched the gold to the complete
+  pointwise pin `{R, F, C}`. Same three mutants re-attribute; a fourth
+  (`m_partial_refs`, the realistic forgot-the-distant-refs case) sharpens the `C`
+  tell; `{O, U}` survive as proven consequence lemmas. A focused re-review confirmed
+  **RESOLVED** — the gold is now complete, the pathology rejected, and dropping
+  `{O, U}` as scored obligations introduces no new blind spot (they are strict
+  consequences; scoring them would dilute the tell).
+- **Deliberate trade-offs:** all-Single obligations, no ladder (reallocation has no
+  natural graded axis); the opaque strength-probe `Reallocate` exposes
+  `|result| == |t|` (length, not contents) for well-formedness, leaking nothing into
+  the measure; `{O, U}` kept as consequence lemmas rather than redundant obligations.
+
+## Deferrals
+
+None. The construct-validity caveat and the two-dimension pre-registration are owned
+by the next E-0003 milestone (already planned), not deferred work from this one.
