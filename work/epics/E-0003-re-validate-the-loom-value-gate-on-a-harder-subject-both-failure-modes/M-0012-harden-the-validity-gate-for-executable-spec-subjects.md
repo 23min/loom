@@ -15,6 +15,10 @@ acs:
       title: A committed concrete-tree battery covers the over-claim violation modes
       status: open
       tdd_phase: red
+    - id: AC-3
+      title: M-0009 calibration holds under the new validity gate
+      status: open
+      tdd_phase: red
 ---
 
 ## Goal
@@ -24,4 +28,6 @@ acs:
 ### AC-1 — The validity gate falls back to concrete-tree execution for unprovable specs
 
 ### AC-2 — A committed concrete-tree battery covers the over-claim violation modes
+
+### AC-3 — M-0009 calibration holds under the new validity gate
 
