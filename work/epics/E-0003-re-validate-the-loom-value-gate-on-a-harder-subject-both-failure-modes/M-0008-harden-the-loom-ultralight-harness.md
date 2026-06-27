@@ -11,7 +11,7 @@ acs:
       tdd_phase: done
     - id: AC-2
       title: probe_spec outcome routing is unit-testable without Dafny
-      status: open
+      status: met
       tdd_phase: done
     - id: AC-3
       title: Kill-rate and strength outputs agree on model row membership
