@@ -19,7 +19,7 @@ engine, a claims surface, or a verifier integration. The full design is in
 | M-0001 | Materialize the loom-ultralight experiment into runnable files | done |
 | M-0002 | Run the loom-ultralight experiment and record the kill-rate gap | done |
 
-## E-0002 — Re-validate the loom value-gate on real aiwf invariants (active)
+## E-0002 — Re-validate the loom value-gate on real aiwf invariants (done)
 
 ### Goal
 
