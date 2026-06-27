@@ -37,7 +37,7 @@ go/no-go on whether to build the full loom-light pipeline.
 | M-0006 | Run the two-arm experiment on both subjects and record the verdict | done |
 | M-0007 | Pre-register the subject-combination rule and go/no-go procedure | done |
 
-## E-0003 — Re-validate the loom value-gate on a harder subject, both failure modes (proposed)
+## E-0003 — Re-validate the loom value-gate on a harder subject, both failure modes (active)
 
 ### Goal
 
@@ -50,5 +50,5 @@ modes, not just one.
 
 | Milestone | Title | Status |
 |---|---|---|
-| M-0008 | Harden the loom-ultralight harness | draft |
+| M-0008 | Harden the loom-ultralight harness | done |
 

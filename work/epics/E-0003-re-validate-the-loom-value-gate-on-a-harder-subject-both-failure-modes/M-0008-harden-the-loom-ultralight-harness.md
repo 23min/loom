@@ -1,30 +1,30 @@
 ---
 id: M-0008
 title: Harden the loom-ultralight harness
-status: in_progress
+status: done
 parent: E-0003
 tdd: required
 acs:
     - id: AC-1
       title: Strength entailment population is the valid population
-      status: open
-      tdd_phase: red
+      status: met
+      tdd_phase: done
     - id: AC-2
       title: probe_spec outcome routing is unit-testable without Dafny
-      status: open
-      tdd_phase: red
+      status: met
+      tdd_phase: done
     - id: AC-3
       title: Kill-rate and strength outputs agree on model row membership
-      status: open
-      tdd_phase: red
+      status: met
+      tdd_phase: done
     - id: AC-4
       title: verdict.json is self-contained with per-arm valid, extracted, trials
-      status: open
-      tdd_phase: red
+      status: met
+      tdd_phase: done
     - id: AC-5
       title: Canonicalize golden re-baselined with opus-4.8 verdict unchanged
-      status: open
-      tdd_phase: red
+      status: met
+      tdd_phase: done
 ---
 
 ## Goal
@@ -166,3 +166,90 @@ to the pre-gating values.
 - Foundational — first milestone in E-0003; no milestone dependencies.
 - Builds on the E-0002 harness (the `LOOM_SUBJECT` registry and the structural
   strength gate).
+
+## Work log
+
+The implementation landed as a single commit; the per-AC TDD phase timeline is in
+`aiwf history M-0008/AC-<N>`.
+
+### AC-1 — Strength entailment population is the valid population
+
+`validate_spec` extracted from `score_spec` (one owner of "valid", C1); `probe_spec`
+gates the strength population on it before counting; new `invalid` counter +
+`strength.json` column. Pinned by `probe_spec_excludes_overclaim_invalid_specs` (fails
+under a resolve-only revert).
+
+### AC-2 — probe_spec outcome routing is unit-testable without Dafny
+
+`probe_spec` split into a thin production wrapper + pure `probe_spec_core` taking an
+injected `goal -> Outcome` closure (mirrors `classify_ladder`). Behaviour-preserving —
+the independent reviewer confirmed the production path is byte-identical to the prior
+`probe_spec`. Pinned by `probe_spec_core_routes_trichotomy_without_dafny`.
+
+### AC-3 — Kill-rate and strength outputs agree on model row membership
+
+Active-model list resolved once in `main` and threaded into both paths via a
+`Fragments{preamble, ref_impl}` bundle; `PRIMARY_MODEL` const replaces three `"opus-4.8"`
+literals. Pinned by `strength_rows_json_honors_active_model_filter`.
+
+### AC-4 — verdict.json is self-contained with per-arm valid, extracted, trials
+
+`results.json` carries `extracted`; `verdict.json` `inputs` carries per-arm
+`valid`/`extracted`/`trials` + derived `over_claim_rate`. Pure `results_json` /
+`verdict_inputs_json` / `ArmCounts` / `read_arm_counts`. Pinned by
+`results_json_carries_extracted`, `verdict_inputs_json_is_self_contained`,
+`read_arm_counts_parses_census_with_fallback`.
+
+### AC-5 — Canonicalize golden re-baselined with opus-4.8 verdict unchanged
+
+`results/strength-n30.json` re-baselined under the gated population; the two opus-4.8
+rows are byte-identical (`width_exact` 28 disinterested / 3 incentivized unchanged → the
+M-0002 finding stands), only non-primary rows redistribute and every row gains the
+`invalid` column. Pinned by `golden_canonicalize_n30_strength_is_reproduced` (passes
+against the re-baselined golden, 2268s).
+
+## Validation
+
+- `cargo clippy --all-targets -- -D warnings`: clean.
+- `cargo fmt --check`: clean.
+- `cargo test` (non-ignored): **31 passed, 0 failed, 4 ignored** (~58s).
+- `golden_canonicalize_n30_strength_is_reproduced` (`#[ignore]`): **passed** against the
+  re-baselined golden (2268s).
+- `production_scorer_calibrates_every_subject` (`#[ignore]`): **passed** (83s) — confirms
+  the `score_spec`/`validate_spec` change across all three subjects.
+- Independent two-lens review: code-quality **APPROVE** (no blocking findings),
+  design-quality **SOUND**. Four in-context corrections applied (golden trailing-newline
+  strip; tightened `StrengthTally`/`invalid` docs; added a `read_arm_counts` malformed-row
+  branch test).
+
+## Reviewer notes
+
+- **Deliberate trade-off — `Fragments` overlaps `ScoreCtx`.** Both carry
+  `(preamble, ref_impl)`; the design reviewer noted they could compose (`ScoreCtx{frags,
+  ..}`). Kept separate (a three-similar-lines KISS wash the reviewer judged acceptable).
+  `Fragments` is applied only to the functions that hit 8 args; `score_spec`/`calibrate`/
+  `validate_spec` keep loose args (≤7).
+- **`invalid` semantics.** The validity gate runs before the resolve guard, so a spec
+  that fails to resolve against the reference impl (e.g. an undefined name) is now
+  bucketed `invalid`, not `probe_error`. Intentional and pinned; the field doc was
+  tightened. This is the cause of the golden's haiku-disinterested `probe_errors 7 →
+  invalid 7` relabel (denominator unchanged at 23).
+- **`over_claim_rate` is legibility-only** — it never feeds the §6 verdict (which keys off
+  `valid`), folds validity-*timeouts* into the numerator, and reports `0.0` when
+  `extracted == 0` (an arm already `Inconclusive` via `min_valid`). When the successor
+  two-dimension pre-registration scores over-claiming as a first-class outcome, it must
+  define the metric precisely rather than reuse this legibility field as-is.
+- **`read_arm_counts` extracted→trials fallback** is for pre-AC-4 `results.json` records
+  lacking `extracted`; affects only `over_claim_rate`, never the verdict. Both reviewers
+  flagged it as a minor unverifiable-assumption smell; kept because it lets an old record
+  still produce a verdict (its `valid` is readable).
+- **`score_trials` extracted-counting** is covered by the `#[ignore]`d `production_scorer`
+  (it Dafny-validates each spec, so it can't be fast-unit-tested); the pure `results_json`
+  serializer is unit-tested.
+- No `TODO`/`FIXME`/debug code introduced.
+
+## Deferrals
+
+None. This milestone closes `G-0004` and `G-0005` in full. The scored two-dimension
+over-claim verdict is out of scope — a later E-0003 milestone under its own
+pre-registration — not a deferral of this milestone's work.
