@@ -6,8 +6,16 @@ parent: E-0003
 depends_on:
     - M-0010
 tdd: required
+acs:
+    - id: AC-1
+      title: The two-arm reallocate sweep is executed and the scored artifacts are recorded
+      status: open
+      tdd_phase: red
 ---
 
 ## Goal
 
 ## Acceptance criteria
+
+### AC-1 — The two-arm reallocate sweep is executed and the scored artifacts are recorded
+
