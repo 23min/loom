@@ -1,7 +1,7 @@
 ---
 id: M-0012
 title: Harden the validity gate for executable-spec subjects
-status: draft
+status: in_progress
 parent: E-0003
 depends_on:
     - M-0010
