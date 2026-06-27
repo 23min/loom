@@ -15,7 +15,7 @@ acs:
       status: met
     - id: AC-3
       title: verdict() and combine() yield a recorded go/no-go Decision
-      status: open
+      status: met
 ---
 ## Goal
 
