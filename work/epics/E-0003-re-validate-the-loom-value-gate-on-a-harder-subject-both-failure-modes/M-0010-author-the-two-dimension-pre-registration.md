@@ -13,7 +13,7 @@ acs:
       tdd_phase: done
     - id: AC-2
       title: The combination rule is total and matches an independent oracle
-      status: open
+      status: met
       tdd_phase: done
     - id: AC-3
       title: The reallocate §6 prediction map is committed and frozen
