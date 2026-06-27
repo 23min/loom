@@ -21,7 +21,7 @@ acs:
       tdd_phase: done
     - id: AC-4
       title: The pre-registration document is committed, ancestry-verifiable
-      status: open
+      status: met
       tdd_phase: done
 ---
 ## Goal
