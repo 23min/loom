@@ -37,3 +37,18 @@ go/no-go on whether to build the full loom-light pipeline.
 | M-0006 | Run the two-arm experiment on both subjects and record the verdict | done |
 | M-0007 | Pre-register the subject-combination rule and go/no-go procedure | done |
 
+## E-0003 — Re-validate the loom value-gate on a harder subject, both failure modes (proposed)
+
+### Goal
+
+Re-validate the loom value-gate on a genuinely more complex aiwf invariant,
+pre-registering **both** ways the incentive can distort spec quality —
+**under-specification** (E-0002's predicted tell) *and* **over-claiming**
+(E-0002's recorded but un-pre-registered lead) — via a two-dimension §6 verdict.
+The epic closes with a mechanical go/no-go that is a fair test of both failure
+modes, not just one.
+
+| Milestone | Title | Status |
+|---|---|---|
+| M-0008 | Harden the loom-ultralight harness | draft |
+
