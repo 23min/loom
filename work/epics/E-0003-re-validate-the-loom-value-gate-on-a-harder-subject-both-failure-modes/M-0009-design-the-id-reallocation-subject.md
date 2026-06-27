@@ -18,7 +18,7 @@ acs:
     - id: AC-3
       title: Mutant bank is clause-isolated and fully killed by the gold spec
       status: open
-      tdd_phase: red
+      tdd_phase: green
     - id: AC-4
       title: Over-claim fixture is caught by the validity gate
       status: open
