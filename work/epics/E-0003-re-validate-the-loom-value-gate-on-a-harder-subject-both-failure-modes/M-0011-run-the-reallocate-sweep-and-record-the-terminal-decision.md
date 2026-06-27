@@ -5,6 +5,7 @@ status: in_progress
 parent: E-0003
 depends_on:
     - M-0010
+    - M-0012
 tdd: required
 acs:
     - id: AC-1
