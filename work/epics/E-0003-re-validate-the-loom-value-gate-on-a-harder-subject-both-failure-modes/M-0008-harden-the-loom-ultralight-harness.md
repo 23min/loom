@@ -21,6 +21,10 @@ acs:
       title: verdict.json is self-contained with per-arm valid, extracted, trials
       status: open
       tdd_phase: red
+    - id: AC-5
+      title: Canonicalize golden re-baselined with opus-4.8 verdict unchanged
+      status: open
+      tdd_phase: red
 ---
 
 ## Goal
@@ -34,4 +38,6 @@ acs:
 ### AC-3 — Kill-rate and strength outputs agree on model row membership
 
 ### AC-4 — verdict.json is self-contained with per-arm valid, extracted, trials
+
+### AC-5 — Canonicalize golden re-baselined with opus-4.8 verdict unchanged
 
