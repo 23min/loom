@@ -25,7 +25,7 @@ acs:
       tdd_phase: done
     - id: AC-5
       title: Reallocation subject registered and calibrates green end-to-end
-      status: open
+      status: met
       tdd_phase: done
 ---
 ## Goal
