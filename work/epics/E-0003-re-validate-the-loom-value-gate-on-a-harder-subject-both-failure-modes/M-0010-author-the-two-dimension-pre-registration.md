@@ -22,7 +22,7 @@ acs:
     - id: AC-4
       title: The pre-registration document is committed, ancestry-verifiable
       status: open
-      tdd_phase: red
+      tdd_phase: green
 ---
 ## Goal
 
