@@ -1,8 +1,10 @@
 ---
 id: G-0004
 title: Unify loom-ultralight model-filtering across kill-rate and strength outputs
-status: open
+status: addressed
 discovered_in: M-0006
+addressed_by:
+    - M-0008
 ---
 
 ## What's missing
