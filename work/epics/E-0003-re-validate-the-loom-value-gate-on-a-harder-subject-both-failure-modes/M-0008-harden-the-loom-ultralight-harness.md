@@ -1,7 +1,7 @@
 ---
 id: M-0008
 title: Harden the loom-ultralight harness
-status: in_progress
+status: done
 parent: E-0003
 tdd: required
 acs:
