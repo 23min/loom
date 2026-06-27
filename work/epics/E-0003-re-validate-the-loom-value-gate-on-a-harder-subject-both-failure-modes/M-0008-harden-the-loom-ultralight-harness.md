@@ -23,7 +23,7 @@ acs:
       tdd_phase: done
     - id: AC-5
       title: Canonicalize golden re-baselined with opus-4.8 verdict unchanged
-      status: open
+      status: met
       tdd_phase: done
 ---
 
