@@ -1,0 +1,47 @@
+I'll analyze the contract carefully and write both the implementation and the specification.
+
+## Implementation
+
+```dafny
+function Canonicalize(x: Id): Id {
+  Id(x.kind, x.value, if x.width >= PAD then x.width else PAD)
+}
+```
+
+## Lemma with ensures clauses
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures var r := Canonicalize(x);
+    // The kind and value are never changed
+    r.kind == x.kind &&
+    r.value == x.value &&
+    // The result is wellformed
+    Wellformed(r) &&
+    // The width is at least the minimum PAD (4)
+    r.width >= PAD &&
+    // The width is at least the original width (never shrinks)
+    r.width >= x.width &&
+    // The width is exactly max(x.width, PAD) — no unnecessary padding beyond that
+    r.width == (if x.width >= PAD then x.width else PAD) &&
+    // Canonicalizing an already-canonical id is a no-op
+    (r.width >= PAD ==> Canonicalize(r) == r) &&
+    // Idempotence: canonicalizing twice gives the same result as once
+    Canonicalize(r) == r
+{ }
+```
+
+### Explanation of each clause
+
+| Clause | What it captures |
+|--------|-----------------|
+| `r.kind == x.kind` | Kind never changes |
+| `r.value == x.value` | Numeric value never changes |
+| `Wellformed(r)` | Output is wellformed (width can hold value) |
+| `r.width >= PAD` | Minimum 4-digit display width |
+| `r.width >= x.width` | Width never shrinks (already-wide ids unchanged) |
+| `r.width == (if x.width >= PAD then x.width else PAD)` | Exact width: original if ≥ 4, else exactly 4 — no over-padding |
+| `Canonicalize(r) == r` | Idempotence: already-canonical ids are a no-op |
+
+The most critical clause is the exact-width formula: it prevents an implementation from, say, always using width 100, while still satisfying the minimum-4 requirement. Together these clauses are **precise and complete** — they uniquely characterize `Canonicalize`.

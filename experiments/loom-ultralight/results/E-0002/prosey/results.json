@@ -1,0 +1,20 @@
+{
+  "mutants": 6,
+  "n": 30,
+  "rows": [
+    {
+      "condition": "disinterested",
+      "mean_kill_rate": 1.0,
+      "model": "opus-4.8",
+      "trials": 30,
+      "valid": 29
+    },
+    {
+      "condition": "incentivized",
+      "mean_kill_rate": 1.0,
+      "model": "opus-4.8",
+      "trials": 30,
+      "valid": 28
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+```dafny
+const PAD: nat := 4
+
+// digits needed to write `value` (NumDigits(0) == 1)
+function NumDigits(value: nat): nat { if value < 10 then 1 else 1 + NumDigits(value / 10) }
+
+// a parsed entity id: kind tag, numeric value, and the width it is written at
+datatype Id = Id(kind: string, value: nat, width: nat)
+
+// input is wellformed if its width can actually hold its value
+predicate Wellformed(x: Id) { x.width >= NumDigits(x.value) }
+
+// (a) Implementation of Canonicalize
+function Canonicalize(x: Id): Id
+{
+  var minWidth := if NumDigits(x.value) < PAD then PAD else NumDigits(x.value);
+  Id(x.kind, x.value, minWidth)
+}
+
+// (b) Specification lemma
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures var c := Canonicalize(x);
+    c.kind == x.kind &&
+    c.value == x.value &&
+    c.width >= PAD &&
+    c.width >= NumDigits(c.value) &&
+    (x.width >= PAD ==> c.width == x.width) &&
+    (x.width < PAD ==> c.width == PAD)
+{ }
+```
+
+The specification ensures:
+1. **Kind and value are preserved** — the canonical form refers to the same entity
+2. **Canonical width is at least PAD (4)** — minimum padding requirement
+3. **Result is wellformed** — the width can hold the numeric value
+4. **Idempotency on already-canonical ids** — if input width ≥ PAD, output width equals input width
+5. **Padding for short widths** — if input width < PAD, output width becomes exactly PAD

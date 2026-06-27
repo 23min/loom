@@ -1,0 +1,49 @@
+I'll analyze the contract carefully:
+
+1. Canonicalization sets width to `max(4, NumDigits(value))` — the minimum of 4 digits, but never less than needed to represent the value
+2. Kind and value never change
+3. Already-canonical ids are unchanged (idempotent)
+
+## (a) Implementation
+
+```dafny
+function Canonicalize(x: Id): Id {
+  Id(x.kind, x.value, if x.width >= PAD then x.width else PAD)
+}
+```
+
+Wait — re-reading: "the numeric value is left-zero-padded to a minimum of 4 digits. An id already at 4 or more digits is returned unchanged." So if the id already has width ≥ 4, it's returned unchanged. If width < 4, it's padded to exactly 4.
+
+```dafny
+function Canonicalize(x: Id): Id {
+  if x.width >= PAD then x
+  else Id(x.kind, x.value, PAD)
+}
+```
+
+## (b) Lemma with `ensures` clauses
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures Canonicalize(x).kind == x.kind
+  ensures Canonicalize(x).value == x.value
+  ensures Canonicalize(x).width >= PAD
+  ensures Canonicalize(x).width >= x.width
+  ensures x.width >= PAD ==> Canonicalize(x) == x
+  ensures x.width < PAD ==> Canonicalize(x).width == PAD
+  ensures Wellformed(Canonicalize(x))
+  ensures Canonicalize(Canonicalize(x)) == Canonicalize(x)
+{ }
+```
+
+**Explanation of each clause:**
+
+1. **Kind preserved**: `Canonicalize(x).kind == x.kind` — kind never changes
+2. **Value preserved**: `Canonicalize(x).value == x.value` — value never changes
+3. **Minimum width 4**: `Canonicalize(x).width >= PAD` — result always has at least 4 digits
+4. **Width never decreases**: `Canonicalize(x).width >= x.width` — we only pad, never shrink
+5. **Already canonical is identity**: `x.width >= PAD ==> Canonicalize(x) == x` — no-op if already ≥ 4
+6. **Under-width case**: `x.width < PAD ==> Canonicalize(x).width == PAD` — exactly 4 when padding needed
+7. **Result is wellformed**: `Wellformed(Canonicalize(x))` — result can hold its value
+8. **Idempotent**: `Canonicalize(Canonicalize(x)) == Canonicalize(x)` — canonicalizing twice is same as once

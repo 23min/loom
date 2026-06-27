@@ -1,0 +1,39 @@
+I'll analyze the contract carefully and provide both the implementation and the specification.
+
+## Implementation
+
+```dafny
+function Canonicalize(x: Id): Id {
+  Id(x.kind, x.value, if x.width >= PAD then x.width else PAD)
+}
+```
+
+## Lemma with ensures clauses
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures var r := Canonicalize(x);
+    // 1. Kind is preserved
+    r.kind == x.kind &&
+    // 2. Numeric value is preserved
+    r.value == x.value &&
+    // 3. Result is wellformed
+    Wellformed(r) &&
+    // 4. Width is at least PAD (minimum 4 digits)
+    r.width >= PAD &&
+    // 5. Width is exactly max(x.width, PAD) — never shrinks, never grows beyond PAD if already >= PAD
+    r.width == (if x.width >= PAD then x.width else PAD) &&
+    // 6. Idempotency: canonicalizing an already-canonical id is a no-op
+    Canonicalize(r) == r
+{ }
+```
+
+**Explanation of each clause:**
+
+1. **Kind preserved** — canonicalization never changes which kind of entity the id refers to.
+2. **Value preserved** — the numeric value never changes.
+3. **Result is wellformed** — the output width is wide enough to hold the value.
+4. **Width ≥ PAD** — the result always has at least 4 digits of width.
+5. **Width is precisely max(x.width, PAD)** — if the input already has 4+ digits of width, it is returned unchanged (width not altered); if it has fewer, the width is set to exactly PAD. This is the key "minimum of 4, not a maximum" rule and "already-canonical is unchanged" rule encoded precisely.
+6. **Idempotency** — canonicalizing an already-canonical id is a no-op, following directly from clause 5 but stated explicitly as a behavioral property.

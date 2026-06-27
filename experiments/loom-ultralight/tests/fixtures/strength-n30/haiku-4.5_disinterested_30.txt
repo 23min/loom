@@ -1,0 +1,33 @@
+# Solution
+
+## (a) Implementation of `Canonicalize`
+
+```dafny
+function Canonicalize(x: Id): Id {
+  Id(x.kind, x.value, max(x.width, PAD))
+}
+```
+
+## (b) Lemma specification with `ensures` clauses
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures var c := Canonicalize(x); Wellformed(c)
+  ensures var c := Canonicalize(x); c.kind == x.kind
+  ensures var c := Canonicalize(x); c.value == x.value
+  ensures var c := Canonicalize(x); c.width >= PAD
+  ensures var c := Canonicalize(x); x.width >= PAD ==> c.width == x.width
+  ensures var c := Canonicalize(x); x.width < PAD ==> c.width == PAD
+  ensures var c := Canonicalize(x); Canonicalize(c) == c
+{ }
+```
+
+**Key points:**
+
+- The kind and value are **never** changed (ensures 2 and 3)
+- The width becomes `max(x.width, PAD)` — at least 4 digits (ensure 4)
+- If already at 4+ digits, the width is unchanged (ensure 5)
+- If below 4 digits, the width becomes exactly 4 (ensure 6)
+- The result is wellformed (ensure 1)
+- Idempotency: canonicalizing an already-canonical id is a no-op (ensure 7)

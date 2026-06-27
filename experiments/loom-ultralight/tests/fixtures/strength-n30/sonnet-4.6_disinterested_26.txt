@@ -1,0 +1,49 @@
+I'll analyze the contract carefully and provide both the implementation and the specification lemma.
+
+**Key points from the contract:**
+1. Canonicalization sets width to `max(4, NumDigits(value))` — minimum 4 digits, but never shrinks below what's needed
+2. Kind and value never change
+3. If already canonical (width ≥ 4 and width = NumDigits(value) padded... wait — "4 or more digits is returned unchanged")
+
+Re-reading: "An id already at 4 or more digits is returned unchanged." So if width ≥ 4, return unchanged. If width < 4, set width to 4.
+
+Wait, but "the numeric value is left-zero-padded to a minimum of 4 digits" — so canonical width is `max(4, NumDigits(value))`. But then "An id already at 4 or more digits is returned unchanged" — this means if width ≥ 4, it's already canonical (since canonical width is max(4, NumDigits(value)) and wellformedness ensures width ≥ NumDigits(value)).
+
+So canonical width = `max(PAD, x.width)` when width ≥ 4? No...
+
+Actually: canonical width = `max(PAD, NumDigits(value))`. If the current width ≥ 4, then since width ≥ NumDigits(value) (wellformed) and width ≥ 4, the width already equals... no, width could be 5 while canonical is 4.
+
+Re-reading again: "An id already at 4 or more digits is returned unchanged (4 is a minimum, not a maximum)." So any id with width ≥ 4 is returned as-is. Canonical means width = max(4, NumDigits(value)), but if width ≥ 4 already, we don't touch it. This means "canonical" just means width ≥ 4.
+
+So: `Canonicalize(x) = if x.width >= PAD then x else Id(x.kind, x.value, PAD)`
+
+**(a) Implementation:**
+
+```dafny
+function Canonicalize(x: Id): Id {
+  if x.width >= PAD then x
+  else Id(x.kind, x.value, PAD)
+}
+```
+
+**(b) Spec lemma:**
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures var r := Canonicalize(x);
+          // kind and value are preserved
+          r.kind == x.kind &&
+          r.value == x.value &&
+          // result is wellformed
+          Wellformed(r) &&
+          // canonical means width >= PAD
+          r.width >= PAD &&
+          // if already at or above PAD, unchanged
+          (x.width >= PAD ==> r == x) &&
+          // if below PAD, width is set to exactly PAD
+          (x.width < PAD ==> r.width == PAD) &&
+          // canonicalizing twice is a no-op
+          Canonicalize(r) == r
+{ }
+```

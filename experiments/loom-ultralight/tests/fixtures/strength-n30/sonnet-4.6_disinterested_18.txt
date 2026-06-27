@@ -1,0 +1,51 @@
+I'll analyze the contract carefully:
+
+1. Canonicalization sets the width to `max(4, NumDigits(value))` — minimum 4 digits, but never truncates if already wider... wait, re-reading: "An id already at 4 or more digits is returned unchanged." So if width ≥ 4, return unchanged. If width < 4, set width to 4.
+
+Wait, let me re-read: "the numeric value is left-zero-padded to a **minimum of 4 digits**. An id already at 4 or more digits is returned unchanged."
+
+So canonical width = max(4, current width)? No — "An id already at 4 or more digits is returned unchanged" means if width ≥ 4, no change. If width < 4, set width to 4.
+
+Actually, canonical form is: width = max(4, NumDigits(value))? Let me re-read once more.
+
+"Canonicalization rewrites an id to canonical width: the numeric value is left-zero-padded to a minimum of 4 digits."
+
+So canonical means width = max(4, NumDigits(value)) — the minimum number of digits needed to represent the value, but at least 4.
+
+"An id already at 4 or more digits is returned unchanged" — this confirms: if width ≥ 4 already, it's canonical (returned as-is).
+
+But wait: if width = 5 and NumDigits(value) = 3, is it canonical? Yes — "4 is a minimum, not a maximum," and "already at 4 or more digits is returned unchanged."
+
+So canonical width = if x.width >= PAD then x.width else PAD.
+
+**(a) Implementation:**
+
+```dafny
+function Canonicalize(x: Id): Id {
+  if x.width >= PAD then x
+  else Id(x.kind, x.value, PAD)
+}
+```
+
+**(b) Lemma with ensures clauses:**
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures Canonicalize(x).kind == x.kind
+  ensures Canonicalize(x).value == x.value
+  ensures Canonicalize(x).width >= PAD
+  ensures x.width >= PAD ==> Canonicalize(x).width == x.width
+  ensures x.width < PAD ==> Canonicalize(x).width == PAD
+  ensures Wellformed(Canonicalize(x))
+  ensures Canonicalize(Canonicalize(x)) == Canonicalize(x)
+{ }
+```
+
+The key postconditions capture:
+- **Kind and value are preserved** (never change)
+- **Width is at least PAD (4)** after canonicalization
+- **Already-canonical ids are unchanged**: if width ≥ PAD, returned as-is
+- **Under-width ids get exactly PAD**: if width < PAD, new width is exactly PAD
+- **Result is wellformed**: the new width can hold the value
+- **Idempotence**: canonicalizing a canonical id is a no-op

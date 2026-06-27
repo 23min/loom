@@ -1,0 +1,55 @@
+I'll analyze the contract carefully and write both the implementation and the specification.
+
+**Contract analysis:**
+1. Kind never changes
+2. Numeric value never changes  
+3. Width becomes `max(4, NumDigits(value))` — padded to minimum 4 digits, but if already ≥ 4 digits wide, returned unchanged
+4. Wait — "An id already at 4 or more digits is returned unchanged" — this means if `width >= 4`, return as-is. If `width < 4`, pad to 4.
+5. Actually re-reading: "canonicalization rewrites an id to canonical width: the numeric value is left-zero-padded to a minimum of 4 digits. An id already at 4 or more digits is returned unchanged."
+
+So canonical width = `max(PAD, x.width)` when `x.width >= NumDigits(x.value)`... 
+
+Wait, more carefully: if the current width is already ≥ 4, return unchanged. If current width < 4, set width to 4. The canonical width is `max(4, x.width)`.
+
+Actually: "left-zero-padded to a minimum of 4 digits" means the width becomes `max(4, NumDigits(value))`. But "An id already at 4 or more digits is returned unchanged" means if `width >= 4`, keep `width` as is.
+
+So canonical width = `if x.width >= PAD then x.width else PAD`.
+
+```dafny
+function Canonicalize(x: Id): Id {
+  if x.width >= PAD then x
+  else Id(x.kind, x.value, PAD)
+}
+```
+
+**For the lemma**, I need to capture the contract precisely and completely:
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures var r := Canonicalize(x);
+    // kind and value are preserved
+    r.kind == x.kind &&
+    r.value == x.value &&
+    // result is wellformed
+    Wellformed(r) &&
+    // width is at least PAD
+    r.width >= PAD &&
+    // width is either the original width (if already >= PAD) or exactly PAD
+    (x.width >= PAD ==> r.width == x.width) &&
+    (x.width < PAD ==> r.width == PAD) &&
+    // canonicalizing again is a no-op
+    Canonicalize(r) == r
+{ }
+```
+
+Let me verify completeness:
+- Kind preserved ✓
+- Value preserved ✓  
+- Result is wellformed ✓
+- Width ≥ 4 (minimum pad) ✓
+- If already ≥ 4 digits wide → unchanged (so width preserved exactly) ✓
+- If < 4 digits wide → width becomes exactly 4 ✓
+- Idempotent (canonicalizing canonical id is no-op) ✓
+
+The two conditional clauses together with `r.width >= PAD` fully characterize `r.width = max(PAD, x.width)`, which is the complete width contract.

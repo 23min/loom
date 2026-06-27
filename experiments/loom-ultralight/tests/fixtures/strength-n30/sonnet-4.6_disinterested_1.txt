@@ -1,0 +1,40 @@
+## Part (a): Implementation
+
+```dafny
+function Canonicalize(x: Id): Id {
+  Id(x.kind, x.value, if x.width >= PAD then x.width else PAD)
+}
+```
+
+## Part (b): Lemma with `ensures` clauses
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  // 1. Kind and value are never changed
+  ensures Canonicalize(x).kind == x.kind
+  ensures Canonicalize(x).value == x.value
+  // 2. The canonical width is at least PAD (minimum 4 digits)
+  ensures Canonicalize(x).width >= PAD
+  // 3. If the input width is already >= PAD, it is returned unchanged (no-op)
+  ensures x.width >= PAD ==> Canonicalize(x).width == x.width
+  // 4. If the input width is below PAD, the canonical width is exactly PAD
+  ensures x.width < PAD ==> Canonicalize(x).width == PAD
+  // 5. The result is wellformed (canonical width can still hold the value)
+  ensures Wellformed(Canonicalize(x))
+  // 6. Canonicalizing an already-canonical id is a no-op
+  ensures Canonicalize(Canonicalize(x)) == Canonicalize(x)
+{ }
+```
+
+### Explanation of each clause
+
+| Clause | Contract requirement covered |
+|--------|------------------------------|
+| `.kind == x.kind` | "The kind … must never change" |
+| `.value == x.value` | "The numeric value must never change" |
+| `.width >= PAD` | "minimum of 4 digits" |
+| `x.width >= PAD ==> .width == x.width` | "An id already at 4 or more digits is returned unchanged" |
+| `x.width < PAD ==> .width == PAD` | Left-zero-padded to exactly 4 when below minimum |
+| `Wellformed(result)` | The output is itself wellformed (width can hold value) |
+| `Canonicalize(Canonicalize(x)) == Canonicalize(x)` | "Canonicalizing an already-canonical id is a no-op" (idempotence) |

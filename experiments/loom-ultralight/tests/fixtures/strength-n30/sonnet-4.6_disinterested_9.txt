@@ -1,0 +1,68 @@
+I'll analyze the contract carefully:
+
+1. The canonical width is `max(4, NumDigits(value))` — minimum 4 digits, but never fewer digits than needed to represent the value.
+2. Kind and value never change.
+3. Canonicalizing an already-canonical id is a no-op.
+
+**(a) Implementation:**
+
+```dafny
+function Canonicalize(x: Id): Id {
+  Id(x.kind, x.value, if x.width < PAD then PAD else x.width)
+}
+```
+
+Wait — re-reading: "the numeric value is left-zero-padded to a minimum of 4 digits. An id already at 4 or more digits is returned unchanged." So if `width >= 4`, return unchanged. If `width < 4`, pad to 4.
+
+```dafny
+function Canonicalize(x: Id): Id {
+  if x.width >= PAD then x else Id(x.kind, x.value, PAD)
+}
+```
+
+**(b) Lemma with ensures clauses:**
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures Canonicalize(x).kind == x.kind
+  ensures Canonicalize(x).value == x.value
+  ensures Canonicalize(x).width >= PAD
+  ensures Canonicalize(x).width >= NumDigits(x.value)
+  ensures x.width >= PAD ==> Canonicalize(x) == x
+  ensures x.width < PAD ==> Canonicalize(x).width == PAD
+  ensures Wellformed(Canonicalize(x))
+  ensures Canonicalize(Canonicalize(x)) == Canonicalize(x)
+{ }
+```
+
+Let me review each clause for completeness:
+
+1. `kind` unchanged ✓
+2. `value` unchanged ✓  
+3. Width at least 4 (minimum) ✓
+4. Width sufficient to display value (wellformedness) ✓
+5. Already canonical (width ≥ 4) → no-op ✓
+6. Not canonical (width < 4) → width becomes exactly 4 ✓
+7. Result is wellformed ✓
+8. Idempotent (canonicalizing canonical is no-op) ✓
+
+The full answer:
+
+```dafny
+function Canonicalize(x: Id): Id {
+  if x.width >= PAD then x else Id(x.kind, x.value, PAD)
+}
+
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures Canonicalize(x).kind == x.kind
+  ensures Canonicalize(x).value == x.value
+  ensures Canonicalize(x).width >= PAD
+  ensures Canonicalize(x).width >= NumDigits(x.value)
+  ensures x.width >= PAD ==> Canonicalize(x) == x
+  ensures x.width < PAD ==> Canonicalize(x).width == PAD
+  ensures Wellformed(Canonicalize(x))
+  ensures Canonicalize(Canonicalize(x)) == Canonicalize(x)
+{ }
+```

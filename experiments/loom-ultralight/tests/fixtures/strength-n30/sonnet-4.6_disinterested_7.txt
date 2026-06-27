@@ -1,0 +1,44 @@
+I'll analyze the contract carefully:
+
+1. Canonicalization sets width to `max(4, NumDigits(value))` — minimum 4 digits, but never shrinks below what's needed to display the value
+2. Kind and value never change
+3. If already canonical (width >= 4 and width == NumDigits(value) when NumDigits(value) >= 4, or width == 4 when NumDigits(value) < 4), it's a no-op
+
+Wait, let me re-read: "left-zero-padded to a minimum of 4 digits. An id already at 4 or more digits is returned unchanged."
+
+So canonical width = `max(PAD, NumDigits(value))`. And if the id's width is already >= 4, it's returned unchanged. If width < 4, it's padded to 4.
+
+**(a) Implementation:**
+
+```dafny
+function Canonicalize(x: Id): Id {
+  if x.width >= PAD then x
+  else Id(x.kind, x.value, PAD)
+}
+```
+
+**(b) Lemma with ensures clauses:**
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures Canonicalize(x).kind == x.kind
+  ensures Canonicalize(x).value == x.value
+  ensures Canonicalize(x).width >= PAD
+  ensures Canonicalize(x).width >= NumDigits(x.value)
+  ensures x.width >= PAD ==> Canonicalize(x) == x
+  ensures x.width < PAD ==> Canonicalize(x).width == PAD
+  ensures Wellformed(Canonicalize(x))
+  ensures Canonicalize(Canonicalize(x)) == Canonicalize(x)
+{ }
+```
+
+Let me verify each clause:
+- Kind unchanged ✓
+- Value unchanged ✓  
+- Width >= 4 (minimum) ✓
+- Width >= NumDigits(value) (wellformed; since if x.width >= 4 we keep it, and x.width >= NumDigits(x.value) by Wellformed; if x.width < 4 we set width=4 >= NumDigits(value) since NumDigits(value) <= x.width < 4 means NumDigits(value) <= 3 < 4) ✓
+- If already >= 4 digits wide, returned unchanged (the no-op clause) ✓
+- If < 4 digits wide, width becomes exactly 4 ✓
+- Result is wellformed ✓
+- Idempotent: canonicalizing twice = canonicalizing once ✓

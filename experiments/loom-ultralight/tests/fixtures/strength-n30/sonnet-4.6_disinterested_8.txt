@@ -1,0 +1,50 @@
+I'll analyze the contract carefully:
+
+1. Canonicalization sets width to `max(4, NumDigits(value))` — i.e., at least 4 digits, but never less than what's needed to display the value.
+2. Kind and value never change.
+3. The result is wellformed.
+4. Already-canonical ids are unchanged (idempotent).
+
+## (a) Implementation
+
+```dafny
+function Canonicalize(x: Id): Id {
+  Id(x.kind, x.value, if x.width >= PAD then x.width else PAD)
+}
+```
+
+Wait — re-reading: "An id already at 4 or more digits is returned unchanged." So if `width >= 4`, return as-is. If `width < 4`, pad to exactly 4.
+
+```dafny
+function Canonicalize(x: Id): Id {
+  if x.width >= PAD then x
+  else Id(x.kind, x.value, PAD)
+}
+```
+
+## (b) Lemma with `ensures` clauses
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures Canonicalize(x).kind == x.kind
+  ensures Canonicalize(x).value == x.value
+  ensures Canonicalize(x).width >= PAD
+  ensures Canonicalize(x).width >= NumDigits(x.value)
+  ensures x.width >= PAD ==> Canonicalize(x) == x
+  ensures x.width < PAD ==> Canonicalize(x).width == PAD
+  ensures Wellformed(Canonicalize(x))
+  ensures Canonicalize(Canonicalize(x)) == Canonicalize(x)
+{ }
+```
+
+Let me verify each clause against the contract:
+
+- **Kind unchanged**: `Canonicalize(x).kind == x.kind` ✓
+- **Value unchanged**: `Canonicalize(x).value == x.value` ✓  
+- **Width ≥ 4 (minimum)**: `Canonicalize(x).width >= PAD` ✓
+- **Width sufficient for value**: `Canonicalize(x).width >= NumDigits(x.value)` ✓ (wellformedness of result)
+- **Already canonical → no-op**: `x.width >= PAD ==> Canonicalize(x) == x` ✓
+- **Sub-4 width → set to exactly 4**: `x.width < PAD ==> Canonicalize(x).width == PAD` ✓
+- **Result is wellformed**: `Wellformed(Canonicalize(x))` ✓
+- **Idempotent**: `Canonicalize(Canonicalize(x)) == Canonicalize(x)` ✓ (since result always has width ≥ 4)

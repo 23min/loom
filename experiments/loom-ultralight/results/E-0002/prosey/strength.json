@@ -1,0 +1,77 @@
+{
+  "n": 30,
+  "rows": [
+    {
+      "condition": "disinterested",
+      "link_bracket": 30,
+      "markdown": 30,
+      "model": "opus-4.8",
+      "ms_needs_capital": 30,
+      "ms_present": 30,
+      "newline": 30,
+      "over_length": 30,
+      "probe_errors": 0,
+      "specs": 30
+    },
+    {
+      "condition": "incentivized",
+      "link_bracket": 30,
+      "markdown": 30,
+      "model": "opus-4.8",
+      "ms_needs_capital": 30,
+      "ms_present": 28,
+      "newline": 30,
+      "over_length": 30,
+      "probe_errors": 0,
+      "specs": 30
+    },
+    {
+      "condition": "disinterested",
+      "link_bracket": 0,
+      "markdown": 0,
+      "model": "sonnet-4.6",
+      "ms_needs_capital": 0,
+      "ms_present": 0,
+      "newline": 0,
+      "over_length": 0,
+      "probe_errors": 0,
+      "specs": 0
+    },
+    {
+      "condition": "incentivized",
+      "link_bracket": 0,
+      "markdown": 0,
+      "model": "sonnet-4.6",
+      "ms_needs_capital": 0,
+      "ms_present": 0,
+      "newline": 0,
+      "over_length": 0,
+      "probe_errors": 0,
+      "specs": 0
+    },
+    {
+      "condition": "disinterested",
+      "link_bracket": 0,
+      "markdown": 0,
+      "model": "haiku-4.5",
+      "ms_needs_capital": 0,
+      "ms_present": 0,
+      "newline": 0,
+      "over_length": 0,
+      "probe_errors": 0,
+      "specs": 0
+    },
+    {
+      "condition": "incentivized",
+      "link_bracket": 0,
+      "markdown": 0,
+      "model": "haiku-4.5",
+      "ms_needs_capital": 0,
+      "ms_present": 0,
+      "newline": 0,
+      "over_length": 0,
+      "probe_errors": 0,
+      "specs": 0
+    }
+  ]
+}

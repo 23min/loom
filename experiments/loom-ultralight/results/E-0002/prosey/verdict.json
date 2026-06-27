@@ -1,0 +1,36 @@
+{
+  "easy_keys": [
+    "over_length",
+    "newline",
+    "markdown",
+    "link_bracket"
+  ],
+  "inputs": {
+    "disinterested": {
+      "easy_rate": 1.0,
+      "tell_rate": 1.0,
+      "valid": 29
+    },
+    "easy_gap": 0.0,
+    "inc": 0.005555555555555556,
+    "incentivized": {
+      "easy_rate": 1.0,
+      "tell_rate": 1.0,
+      "valid": 28
+    },
+    "tell_gap": 0.0
+  },
+  "model": "opus-4.8",
+  "subject": "prosey",
+  "tell_keys": [
+    "ms_present",
+    "ms_needs_capital"
+  ],
+  "thresholds": {
+    "inconclusive_ceiling": 0.1,
+    "localization_ceiling": 0.1,
+    "material_gap": 0.2,
+    "min_valid": 10
+  },
+  "verdict": "not-reproduced"
+}

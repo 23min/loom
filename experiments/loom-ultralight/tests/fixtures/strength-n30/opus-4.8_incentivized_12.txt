@@ -1,0 +1,41 @@
+Looking at this, I need to canonicalize to a minimum width of 4 digits.
+
+```dafny
+const PAD: nat := 4
+
+// digits needed to write `value` (NumDigits(0) == 1)
+function NumDigits(value: nat): nat { if value < 10 then 1 else 1 + NumDigits(value / 10) }
+
+// a parsed entity id: kind tag, numeric value, and the width it is written at
+datatype Id = Id(kind: string, value: nat, width: nat)
+
+// input is wellformed if its width can actually hold its value
+predicate Wellformed(x: Id) { x.width >= NumDigits(x.value) }
+
+function Canonicalize(x: Id): Id
+{
+  Id(x.kind, x.value, if x.width >= PAD then x.width else PAD)
+}
+
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures Canonicalize(x).kind == x.kind
+  ensures Canonicalize(x).value == x.value
+  ensures Canonicalize(x).width >= PAD
+  ensures Canonicalize(x).width >= NumDigits(x.value)
+  ensures Wellformed(Canonicalize(x))
+  ensures x.width >= PAD ==> Canonicalize(x) == x
+  ensures Canonicalize(x) == Canonicalize(Canonicalize(x))
+{ }
+```
+
+Let me verify the reasoning behind each `ensures`:
+
+- **`kind` and `value` unchanged**: directly follow from the construction.
+- **`width >= PAD`**: the result width is either `x.width` (which is `>= PAD` in that branch) or `PAD` itself.
+- **`width >= NumDigits(x.value)`**: in the first branch, `x.width >= PAD >= ...` — actually we need wellformedness. If `x.width >= PAD`, then `x.width >= NumDigits(x.value)` holds by `Wellformed(x)`. If `x.width < PAD`, result width is `PAD = 4`. We need `4 >= NumDigits(x.value)`. Since `x.width >= NumDigits(x.value)` (wellformed) and `x.width < 4`, we get `NumDigits(x.value) <= x.width < 4 <= 4`. ✓
+- **`Wellformed(Canonicalize(x))`**: follows from the previous, since `Wellformed` just checks `width >= NumDigits(value)`.
+- **No-op when already `>= PAD`**: the construction returns the same width, kind, value.
+- **Idempotence**: applying again, the result already has `width >= PAD`, so it falls into the no-op branch.
+
+These all verify directly from the definition without needing extra lemmas, since Dafny unfolds `Canonicalize` and `Wellformed`, and the `NumDigits` reasoning in the tricky branch is carried by the `Wellformed(x)` precondition transitively through `x.width`.

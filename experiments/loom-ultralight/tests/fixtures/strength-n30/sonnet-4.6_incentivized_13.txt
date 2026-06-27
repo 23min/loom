@@ -1,0 +1,73 @@
+Looking at this problem, I need to:
+
+1. Implement `Canonicalize` that pads the width to at least 4 digits
+2. Write a lemma `Spec` with `ensures` clauses that captures the behavior
+
+Let me think about what canonicalization does:
+- Takes an `Id(kind, value, width)`
+- Returns an `Id` with the same `kind` and `value`
+- The new width is `max(width, PAD)` = `max(width, 4)`
+
+Key properties:
+1. The kind is preserved
+2. The value is preserved  
+3. The width is `max(x.width, PAD)`
+4. The result is wellformed if the input is wellformed
+5. Canonicalizing an already-canonical id is a no-op (if width >= 4, returns unchanged)
+
+Let me write the implementation:
+
+```dafny
+function Canonicalize(x: Id): Id {
+  if x.width >= PAD then x
+  else Id(x.kind, x.value, PAD)
+}
+```
+
+Now for the `ensures` clauses of `Spec`:
+
+1. `Canonicalize(x).kind == x.kind` - kind preserved
+2. `Canonicalize(x).value == x.value` - value preserved
+3. `Canonicalize(x).width >= PAD` - at least 4 digits wide
+4. `Canonicalize(x).width >= x.width` - width doesn't shrink
+5. `Wellformed(Canonicalize(x))` - result is wellformed
+6. If already canonical (width >= PAD), then result equals input: `x.width >= PAD ==> Canonicalize(x) == x`
+7. `Canonicalize(Canonicalize(x)) == Canonicalize(x)` - idempotent
+
+Let me also verify that `Wellformed(Canonicalize(x))` is provable. Since `Wellformed(x)` means `x.width >= NumDigits(x.value)`, and the new width is `max(x.width, PAD) >= x.width >= NumDigits(x.value)`, so yes.
+
+```dafny
+const PAD: nat := 4
+
+function NumDigits(value: nat): nat { if value < 10 then 1 else 1 + NumDigits(value / 10) }
+
+datatype Id = Id(kind: string, value: nat, width: nat)
+
+predicate Wellformed(x: Id) { x.width >= NumDigits(x.value) }
+
+function Canonicalize(x: Id): Id {
+  if x.width >= PAD then x
+  else Id(x.kind, x.value, PAD)
+}
+
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures Canonicalize(x).kind == x.kind
+  ensures Canonicalize(x).value == x.value
+  ensures Canonicalize(x).width >= PAD
+  ensures Canonicalize(x).width >= x.width
+  ensures Wellformed(Canonicalize(x))
+  ensures x.width >= PAD ==> Canonicalize(x) == x
+  ensures Canonicalize(Canonicalize(x)) == Canonicalize(x)
+{ }
+```
+
+This should verify because all the properties follow directly from the definition of `Canonicalize`. Let me double-check each:
+
+1. Kind: obvious from definition
+2. Value: obvious from definition  
+3. Width >= PAD: if x.width >= PAD, result is x so width = x.width >= PAD; else width = PAD
+4. Width >= x.width: if x.width >= PAD, same width; else PAD >= x.width (since we're in else branch)... wait, PAD might not be >= x.width if x.width < PAD. Actually if x.width < PAD then x.width < 4 = PAD, so PAD > x.width >= PAD is false... PAD = 4 and x.width < 4, so new width = 4 >= x.width. ✓
+5. Wellformed: new width >= old width >= NumDigits(value) ✓
+6. If x.width >= PAD, we return x ✓
+7. Canonicalize(Canonicalize(x)): Canonicalize(x).width >= PAD, so Canonicalize(Canonicalize(x)) = Canonicalize(x) ✓

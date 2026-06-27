@@ -1,0 +1,45 @@
+Looking at this problem, I need to:
+
+1. Implement `Canonicalize` to left-zero-pad the numeric value to a minimum of 4 digits
+2. Write `ensures` clauses that specify the behavior
+
+Let me think through the requirements:
+- The kind and value must never change
+- The width becomes `max(4, NumDigits(value))`
+- Canonicalizing an already-canonical id is a no-op
+- The result must be wellformed
+
+Here's my solution:
+
+```dafny
+function Canonicalize(x: Id): Id
+  requires Wellformed(x)
+{
+  Id(x.kind, x.value, if x.width >= PAD then x.width else PAD)
+}
+
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures var c := Canonicalize(x); 
+    c.kind == x.kind &&
+    c.value == x.value &&
+    c.width >= PAD &&
+    c.width >= NumDigits(x.value) &&
+    Wellformed(c) &&
+    (x.width >= PAD ==> c.width == x.width) &&
+    Canonicalize(c) == c
+{
+}
+```
+
+**Explanation of the ensures clauses:**
+
+1. `c.kind == x.kind` — the kind never changes
+2. `c.value == x.value` — the numeric value never changes
+3. `c.width >= PAD` — the width is at least the minimum of 4
+4. `c.width >= NumDigits(x.value)` — the width is at least enough to hold the value
+5. `Wellformed(c)` — the result is wellformed
+6. `x.width >= PAD ==> c.width == x.width` — if already at or above minimum width, no change
+7. `Canonicalize(c) == c` — canonicalizing again is a no-op (idempotent)
+
+The implementation is straightforward: if the width is already at least PAD, keep it; otherwise, set it to PAD. This preserves the kind and value, ensures the width is at least 4 and sufficient for the value, and satisfies idempotence.

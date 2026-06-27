@@ -1,0 +1,36 @@
+## (a) Implementation
+
+```dafny
+function Canonicalize(x: Id): Id
+{
+  if x.width >= PAD then x
+  else Id(x.kind, x.value, PAD)
+}
+```
+
+## (b) Lemma specification
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures Canonicalize(x).kind == x.kind          // kind never changes
+  ensures Canonicalize(x).value == x.value        // numeric value never changes
+  ensures Canonicalize(x).width == (if x.width >= PAD then x.width else PAD)
+                                                   // width is left-padded to a minimum of PAD
+  ensures Wellformed(Canonicalize(x))             // result is itself wellformed
+  ensures Canonicalize(x).width >= PAD            // result meets the minimum width
+  ensures Canonicalize(Canonicalize(x)) == Canonicalize(x)  // idempotent (already-canonical is a no-op)
+{ }
+```
+
+### Why this is precise and complete
+
+- **Kind never changes / value never changes** — the two invariants that guarantee canonicalization refers to the same entity.
+- **Width result** is pinned down exactly: `max(x.width, PAD)`. This simultaneously encodes:
+  - an id already at ≥ 4 digits (`x.width >= PAD`) is returned **unchanged** (`width == x.width`);
+  - otherwise it is padded to exactly `PAD` (4) digits — never more, never less.
+- **`Wellformed(Canonicalize(x))`** — the result can hold its value (follows since width only grows or stays, and `x` was wellformed).
+- **`width >= PAD`** — the canonical form always meets the 4-digit minimum.
+- **Idempotence** — canonicalizing an already-canonical id is a no-op, stated directly.
+
+The `width` equality clause alone fully determines the width in every case; the remaining clauses make the entity-preservation, wellformedness, minimum-width, and idempotence guarantees explicit so the contract is captured completely.

@@ -1,0 +1,45 @@
+Looking at this problem, I need to:
+
+1. **Implement `Canonicalize`**: pad the numeric value to at least 4 digits, keeping kind and value unchanged
+2. **Specify `Spec`**: write ensures clauses that characterize what canonicalization does
+
+Let me think through the requirements:
+- Kind and value never change
+- Width becomes `max(current_width, 4)` 
+- The result should be wellformed
+- Canonicalizing an already-canonical id is a no-op
+
+Here's my solution:
+
+```dafny
+function Canonicalize(x: Id): Id {
+  Id(x.kind, x.value, if x.width < PAD then PAD else x.width)
+}
+
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures var c := Canonicalize(x); 
+          c.kind == x.kind &&
+          c.value == x.value &&
+          c.width >= PAD &&
+          c.width >= x.width &&
+          Wellformed(c) &&
+          (x.width >= PAD ==> c.width == x.width)
+{ }
+```
+
+**Explanation:**
+
+**Implementation:**
+- `Canonicalize` returns a new `Id` with the same kind and value
+- The width is set to `max(x.width, PAD)` using the conditional
+
+**Ensures clauses:**
+1. `c.kind == x.kind` - kind is preserved
+2. `c.value == x.value` - numeric value is preserved
+3. `c.width >= PAD` - canonical form has at least 4 digits
+4. `c.width >= x.width` - width never decreases
+5. `Wellformed(c)` - the result is wellformed (necessary for validity)
+6. `(x.width >= PAD ==> c.width == x.width)` - if already canonical, it's unchanged (no-op property)
+
+The lemma body is empty because these properties follow directly from the implementation and the input being wellformed.

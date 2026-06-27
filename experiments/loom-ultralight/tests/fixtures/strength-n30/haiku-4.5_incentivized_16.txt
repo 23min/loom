@@ -1,0 +1,26 @@
+```dafny
+function Canonicalize(x: Id): Id {
+  Id(x.kind, x.value, if x.width < PAD then PAD else x.width)
+}
+
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures var c := Canonicalize(x); 
+    c.kind == x.kind &&
+    c.value == x.value &&
+    c.width >= PAD &&
+    (x.width >= PAD ==> c.width == x.width) &&
+    Wellformed(c) &&
+    (Canonicalize(c) == c)
+{ }
+```
+
+The implementation is straightforward: `Canonicalize` preserves the kind and value, and sets the width to the maximum of the current width and `PAD` (which is 4).
+
+The ensures clauses specify that:
+1. The kind is preserved
+2. The numeric value is preserved
+3. The canonical width is at least 4
+4. If already at 4+ digits, the width is unchanged
+5. The result is wellformed
+6. Canonicalizing an already-canonical id is idempotent (a no-op)

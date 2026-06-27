@@ -1,0 +1,44 @@
+## (a) Implementation
+
+```dafny
+function Canonicalize(x: Id): Id
+{
+  if x.width >= PAD then x
+  else Id(x.kind, x.value, PAD)
+}
+```
+
+## (b) Specification
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures
+    // kind and numeric value never change (same entity)
+    Canonicalize(x).kind == x.kind &&
+    Canonicalize(x).value == x.value &&
+    // result is at canonical width: at least PAD, and at least PAD-or-actual-need
+    Canonicalize(x).width == (if x.width >= PAD then x.width else PAD) &&
+    // result is wellformed
+    Wellformed(Canonicalize(x)) &&
+    // result width is at minimum PAD digits
+    Canonicalize(x).width >= PAD &&
+    // already-canonical (width >= PAD) ids are returned unchanged (no-op)
+    (x.width >= PAD ==> Canonicalize(x) == x) &&
+    // canonicalization is idempotent
+    Canonicalize(Canonicalize(x)) == Canonicalize(x)
+{ }
+```
+
+### Notes on completeness
+
+The contract is captured by the conjunction:
+
+- **Kind and value invariance** (`kind`/`value` equal the input): "the kind and the numeric value must never change."
+- **Exact resulting width**: `width == (if x.width >= PAD then x.width else PAD)`. This is the strongest possible statement of the rule — values already at width ≥ 4 keep their exact width (4 is a minimum, not a maximum), and narrower ones are padded up to exactly 4.
+- **Minimum-width guarantee** (`width >= PAD`): redundant with the exact-width clause but states the "minimum of 4 digits" requirement directly.
+- **Wellformedness preservation**: padding to ≥ 4 never drops below `NumDigits(value)` since `Wellformed(x)` gives `x.width >= NumDigits(x.value)`, and PAD-padding only increases width when `x.width < PAD`.
+- **No-op on canonical inputs** (`x.width >= PAD ==> result == x`): "an id already at 4 or more digits is returned unchanged."
+- **Idempotence**: "canonicalizing an already-canonical id is a no-op" — applying twice equals applying once.
+
+The exact-width clause alone (plus kind/value) fully determines the output `Id`, making the spec precise and complete; the remaining clauses are explicit restatements of the named contract properties.

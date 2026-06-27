@@ -1,0 +1,60 @@
+I'll analyze the contract carefully and write both the implementation and specification.
+
+## Analysis of the Contract
+
+1. **Kind never changes**: `result.kind == x.kind`
+2. **Value never changes**: `result.value == x.value`
+3. **Width is max(4, original width)** — wait, let me re-read. "canonical width: the numeric value is left-zero-padded to a **minimum of 4 digits**. An id already at 4 or more digits is returned unchanged."
+   - So if `width < 4`, pad to 4 → `result.width = 4`
+   - If `width >= 4`, return unchanged → `result.width = x.width`
+   - In both cases: `result.width = max(4, x.width)`
+4. **Idempotent**: canonicalizing an already-canonical id is a no-op.
+5. **Wellformedness preserved**: the result should be wellformed.
+
+## Implementation
+
+```dafny
+function Canonicalize(x: Id): Id {
+  if x.width >= PAD then x
+  else Id(x.kind, x.value, PAD)
+}
+```
+
+## Lemma Specification
+
+The ensures clauses must capture the contract **precisely and completely**:
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures var r := Canonicalize(x);
+    // kind is preserved
+    r.kind == x.kind &&
+    // value is preserved
+    r.value == x.value &&
+    // width is set to max(PAD, x.width)
+    r.width == if x.width >= PAD then x.width else PAD &&
+    // result is wellformed
+    Wellformed(r) &&
+    // idempotency: canonicalizing the result is a no-op
+    Canonicalize(r) == r
+{ }
+```
+
+Let me verify idempotency: if `x.width >= 4`, result is `x` unchanged, so `Canonicalize(r) = Canonicalize(x) = x = r` ✓. If `x.width < 4`, result has `width = 4 >= PAD`, so `Canonicalize(r) = r` ✓.
+
+Wellformedness: if `x.width < 4`, result width is 4. We need `4 >= NumDigits(x.value)`. Since `x` is wellformed, `x.width >= NumDigits(x.value)`. But `x.width` could be e.g. 1, and value could be 0 (1 digit), so `4 >= 1` ✓. Actually we need `PAD >= NumDigits(x.value)` — this follows because `NumDigits(x.value) <= x.width < PAD`... wait, that's not guaranteed. Actually if `x.width = 3` and value has 3 digits (e.g. 999), then `NumDigits = 3 <= 4 = PAD` ✓. More carefully: `NumDigits(x.value) <= x.width` (wellformed), and if `x.width < PAD = 4`, then `NumDigits(x.value) <= 3 < 4 = PAD`. So yes, wellformedness is preserved.
+
+The Dafny verifier should be able to prove all these automatically.
+
+```dafny
+lemma Spec(x: Id)
+  requires Wellformed(x)
+  ensures var r := Canonicalize(x);
+    r.kind == x.kind &&
+    r.value == x.value &&
+    r.width == (if x.width >= PAD then x.width else PAD) &&
+    Wellformed(r) &&
+    Canonicalize(r) == r
+{ }
+```
