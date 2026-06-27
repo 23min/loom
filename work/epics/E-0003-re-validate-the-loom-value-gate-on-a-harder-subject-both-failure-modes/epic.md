@@ -144,15 +144,17 @@ resolution path — none blocks the hardening:
 ## Milestones
 
 Sequenced via `aiwfx-plan-milestones`; success references *every milestone listed
-here*, not a fixed count. Only the foundational milestone is allocated so far —
-the later three are planned once their open questions resolve:
+here*, not a fixed count. The foundational and subject-design milestones are
+allocated; the later two are planned once their open questions resolve:
 
 - [`M-0008`](M-0008-harden-the-loom-ultralight-harness.md) — **Harden the
   harness**: close `G-0004` + `G-0005`, plumb the over-claim rate, re-baseline the
   canonicalize golden (verdict-invariant). The foundation; lands first. *(no
   dependencies)*
-- **Design the harder subject** *(not yet allocated)* — gold spec, mutant bank,
-  obligation set, and calibration for the chosen invariant.
+- [`M-0009`](M-0009-design-the-id-reallocation-subject.md) — **Design the
+  id-reallocation subject**: gold `.dfy`, clause-isolated mutant bank, obligation
+  set with the frame-completeness tell, and `--calibrate` calibration of the
+  reallocation invariant. *(depends on `M-0008`)*
 - **Author the two-dimension pre-registration** *(not yet allocated)* — both
   failure modes, their thresholds, and the combination rule, committed before any
   run.
