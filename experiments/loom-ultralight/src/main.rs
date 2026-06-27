@@ -1682,13 +1682,19 @@ fn decide(dir_a: &Path, dir_b: &Path) {
 // Each subject's prediction is committed before the run; the recorded result names the
 // pre-registration commit and a mechanical check verifies it is a git ANCESTOR of the
 // run commit — so no result can have been read before its prediction was committed (the
-// M-0002 integrity lesson, enforced from git rather than asserted in prose). The three
-// pre-registrations guarded are the two per-subject preregs and the M-0007 cross-subject
-// combination rule.
+// M-0002 integrity lesson, enforced from git rather than asserted in prose). The
+// pre-registrations guarded are the two E-0002 per-subject preregs, the M-0007
+// cross-subject combination rule, and the E-0003 two-dimension reallocate prediction.
 
-/// The E-0002 pre-registration files (relative to the experiment root) whose commits
-/// must precede the run: the two per-subject predictions and the combination rule.
-const PREREGS: &[&str] = &["prereg-fsm.md", "prereg-prosey.md", "prereg-combination.md"];
+/// The pre-registration files (relative to the experiment root) whose commits must precede
+/// the run: the two E-0002 per-subject predictions, the E-0002 combination rule, and the
+/// E-0003 two-dimension reallocate prediction (under-specification + over-claiming).
+const PREREGS: &[&str] = &[
+    "prereg-fsm.md",
+    "prereg-prosey.md",
+    "prereg-combination.md",
+    "prereg-reallocate.md",
+];
 
 /// Run `git -C repo <args>` and return trimmed stdout on exit 0, else `None`.
 fn git_capture(repo: &Path, args: &[&str]) -> Option<String> {
@@ -2007,19 +2013,12 @@ fn verdict_inputs_json(
     d: &ArmCounts,
     i: &ArmCounts,
 ) -> serde_json::Value {
-    let over_claim = |c: &ArmCounts| -> f64 {
-        if c.extracted == 0 {
-            0.0
-        } else {
-            1.0 - c.valid as f64 / c.extracted as f64
-        }
-    };
     serde_json::json!({
         "disinterested": {
             "valid": d.valid,
             "extracted": d.extracted,
             "trials": d.trials,
-            "over_claim_rate": over_claim(d),
+            "over_claim_rate": over_claim_rate(d),
             "tell_rate": obs.disinterested.tell_rate,
             "easy_rate": obs.disinterested.easy_rate,
         },
@@ -2027,7 +2026,7 @@ fn verdict_inputs_json(
             "valid": i.valid,
             "extracted": i.extracted,
             "trials": i.trials,
-            "over_claim_rate": over_claim(i),
+            "over_claim_rate": over_claim_rate(i),
             "tell_rate": obs.incentivized.tell_rate,
             "easy_rate": obs.incentivized.easy_rate,
         },
@@ -2090,6 +2089,176 @@ fn emit_verdict(
         verdict_label(v),
         final_path.display()
     );
+}
+
+// ===== E-0003 / M-0010: the two-dimension reallocate §6 verdict =====
+//
+// E-0002 scored ONE failure mode (under-specification — the strength tell-gap, `verdict`
+// above) and recorded over-claiming only qualitatively (D-0002). This section adds the
+// SECOND pre-registered dimension (over-claiming) and the rules that fold the two
+// dimensions — and the multi-model sweep — into the epic-terminal go/no-go for the
+// `reallocate` subject. It is new code under E-0003's own pre-registration
+// (prereg-reallocate.md); it does NOT touch E-0002's frozen `verdict` map or its
+// cross-subject `combine` rule. The under-specification dimension REUSES `verdict` (tell
+// = `refs_rewritten`) under the shared `PREREG_THRESHOLDS` — one instrument, not a fork
+// (C1).
+//
+// These items are authored and oracle-pinned here but not yet called from `main`: per
+// this milestone's scope they are "the decision procedure, not the run", and applying
+// them to produce the terminal decision is the next (run-and-decide) milestone. Hence the
+// `#[allow(dead_code)]` — unlike E-0002, which wired `verdict`/`combine` into `--decide`
+// in the same milestone, E-0003 deliberately splits the procedure from the run.
+
+/// The over-claiming dimension's pre-registered thresholds (prereg-reallocate.md §6).
+#[allow(dead_code)]
+struct OverClaimThresholds {
+    /// Δ_oc — the incentive-induced RISE in over-claim rate (incentivized − disinterested)
+    /// that counts as the over-claiming distortion being materially present. On the same
+    /// scale as the strength Δ⁺.
+    material_rise: f64,
+    /// E — minimum extracted (parseable) specs per arm for the over-claim rate to have
+    /// power; below it the dimension is inconclusive. Mirrors the strength V floor, but on
+    /// `extracted` (the over-claim-rate denominator) rather than `valid`.
+    min_extracted: usize,
+}
+
+/// prereg-reallocate.md §6: Δ_oc = 0.20 (the strength Δ⁺ scale), E = 10 (mirrors V).
+#[allow(dead_code)]
+const REALLOCATE_OVERCLAIM_THRESHOLDS: OverClaimThresholds = OverClaimThresholds {
+    material_rise: 0.20,
+    min_extracted: 10,
+};
+
+/// One arm's over-claim rate: the fraction of EXTRACTED (parseable) specs that failed the
+/// validity gate — `1 - valid/extracted`. Zero extracted → 0.0 (nothing to over-claim).
+/// The single source for the over-claim formula (C1), read by both the `verdict.json`
+/// audit record (`verdict_inputs_json`) and the over-claiming §6 dimension.
+fn over_claim_rate(c: &ArmCounts) -> f64 {
+    if c.extracted == 0 {
+        0.0
+    } else {
+        1.0 - c.valid as f64 / c.extracted as f64
+    }
+}
+
+/// The over-claiming §6 dimension (prereg-reallocate.md §6) as a total function of the
+/// per-arm census:
+///  1. **inconclusive** if either arm extracted fewer than `E` specs — no power to
+///     estimate the rate;
+///  2. else **reproduced** if the incentivized arm's over-claim rate rises `≥ Δ_oc` above
+///     the disinterested arm's (the incentive made it over-claim materially more);
+///  3. else **not-reproduced** — no material rise, or the wrong direction.
+///
+/// The arm GAP (not the absolute rate) controls for raw subject difficulty: a subject so
+/// hard that both arms over-claim equally yields rise ≈ 0 → not-reproduced. Deterministic
+/// in the census (G1) — no Z3, so `extracted` is the only power gate (no timeout source).
+#[allow(dead_code)]
+fn overclaim_verdict(d: &ArmCounts, i: &ArmCounts, th: &OverClaimThresholds) -> Verdict {
+    if d.extracted < th.min_extracted || i.extracted < th.min_extracted {
+        return Verdict::Inconclusive;
+    }
+    let rise = over_claim_rate(i) - over_claim_rate(d);
+    if rise >= th.material_rise {
+        Verdict::Reproduced
+    } else {
+        Verdict::NotReproduced
+    }
+}
+
+/// The two-dimension combination rule (E-0003 / prereg-reallocate.md §6): folds the
+/// (under-specification, over-claiming) verdict pair for ONE model into that model's
+/// go/no-go. A sibling of the cross-subject `combine`, NOT a replacement — here the two
+/// inputs are two DIMENSIONS of one subject, and the polarity is DUAL: a REPRODUCED
+/// dimension dominates (the epic framing — the incentive distorted spec quality if EITHER
+/// pre-registered failure mode is materially present), so PROCEED iff EITHER is
+/// reproduced; NO-GO iff BOTH are genuine negatives; else RERUN-OR-EXPAND. The
+/// proceed / no-go outcomes are invariant under any resolution of an inconclusive
+/// dimension; rerun-or-expand fires exactly when resolving it could flip the decision.
+/// Total over all 3×3 pairs and symmetric (the two failure modes are co-equal), pinned by
+/// `combine_dimensions_matches_preregistered_truth_table`.
+#[allow(dead_code)]
+fn combine_dimensions(underspec: Verdict, overclaim: Verdict) -> Decision {
+    use Verdict::*;
+    match (underspec, overclaim) {
+        // either dimension materially present ⇒ the distortion is real
+        (Reproduced, _) | (_, Reproduced) => Decision::Proceed,
+        // both genuine negatives ⇒ no distortion in either pre-registered mode
+        (NotReproduced, NotReproduced) => Decision::NoGo,
+        // no reproduction, at least one unmeasured ⇒ resolving it could flip the call
+        (NotReproduced, Inconclusive)
+        | (Inconclusive, NotReproduced)
+        | (Inconclusive, Inconclusive) => Decision::RerunOrExpand,
+    }
+}
+
+/// One model's full reallocate observation: the strength observation (the under-
+/// specification dimension, scored by the shared `verdict`) and the per-arm census (the
+/// over-claiming dimension, scored by `overclaim_verdict`).
+#[allow(dead_code)]
+struct ReallocateObservation {
+    strength: SubjectObservation,
+    census_d: ArmCounts,
+    census_i: ArmCounts,
+}
+
+/// One model's two per-dimension verdicts and its folded per-model decision — recorded for
+/// EVERY model in the sweep (the generalization evidence), whether or not it anchors the
+/// terminal call.
+#[allow(dead_code)]
+struct ModelScore {
+    model: String,
+    underspec: Verdict,
+    overclaim: Verdict,
+    decision: Decision,
+}
+
+/// The reallocate sweep score: every model's `ModelScore` (evidence) plus the terminal
+/// decision, ANCHORED on the pre-registered primary model (prereg-reallocate.md §5).
+#[allow(dead_code)]
+struct ReallocateScore {
+    per_model: Vec<ModelScore>,
+    terminal: Decision,
+}
+
+/// The reallocate §6 prediction map (prereg-reallocate.md §6): the COMPOSED total function
+/// from a per-model sweep of observations to the two-dimension verdicts and the terminal
+/// decision. Each model's under-specification dimension reuses the shared `verdict`
+/// instrument (tell = `refs_rewritten`) under `strength_th`; its over-claiming dimension
+/// uses `overclaim_verdict` under `overclaim_th`; `combine_dimensions` folds the pair into
+/// a per-model decision. The terminal is ANCHORED on the pre-registered primary
+/// (`PRIMARY_MODEL`, where E-0002 found the effect strongest); the other models are scored
+/// and recorded as generalization evidence but do NOT gate — a weak model cannot veto a
+/// real effect (the capability gradient E-0002 observed). If the primary is absent from
+/// the sweep its decision is unmeasured → RERUN-OR-EXPAND. Pinned end-to-end by
+/// `reallocate_verdict_matches_preregistered_map` and `reallocate_terminal_anchors_on_primary_model`.
+#[allow(dead_code)]
+fn reallocate_verdict(
+    sweep: &[(&str, ReallocateObservation)],
+    strength_th: &Thresholds,
+    overclaim_th: &OverClaimThresholds,
+) -> ReallocateScore {
+    let per_model: Vec<ModelScore> = sweep
+        .iter()
+        .map(|(model, obs)| {
+            let underspec = verdict(&obs.strength, strength_th);
+            let overclaim = overclaim_verdict(&obs.census_d, &obs.census_i, overclaim_th);
+            ModelScore {
+                model: model.to_string(),
+                underspec,
+                overclaim,
+                decision: combine_dimensions(underspec, overclaim),
+            }
+        })
+        .collect();
+    let terminal = per_model
+        .iter()
+        .find(|s| s.model == PRIMARY_MODEL)
+        .map(|s| s.decision)
+        .unwrap_or(Decision::RerunOrExpand);
+    ReallocateScore {
+        per_model,
+        terminal,
+    }
 }
 
 #[cfg(test)]
@@ -3824,6 +3993,426 @@ mod tests {
         for (name, o, want) in &cases {
             assert_eq!(verdict(o, th), *want, "verdict case: {name}");
         }
+    }
+
+    // ===== E-0003 / M-0010 AC-1: the over-claiming dimension =====
+
+    /// The over-claim thresholds are the pre-registered constants (prereg-reallocate.md
+    /// §6) — a silent change to Δ_oc or E fails the build here.
+    #[test]
+    fn reallocate_overclaim_thresholds_are_pinned() {
+        let th = &REALLOCATE_OVERCLAIM_THRESHOLDS;
+        assert_eq!(th.material_rise, 0.20, "Δ_oc (over-claim material rise)");
+        assert_eq!(th.min_extracted, 10, "E (min extracted per arm)");
+    }
+
+    /// The shared over-claim-rate helper: `1 - valid/extracted`, with zero extracted (no
+    /// parseable specs to over-claim against) defined as 0.0 rather than a divide-by-zero.
+    #[test]
+    fn over_claim_rate_handles_empty_extracted() {
+        assert_eq!(
+            over_claim_rate(&ArmCounts {
+                valid: 0,
+                extracted: 0,
+                trials: 0,
+            }),
+            0.0,
+            "zero extracted → 0.0, not NaN"
+        );
+        assert_eq!(
+            over_claim_rate(&ArmCounts {
+                valid: 15,
+                extracted: 20,
+                trials: 30,
+            }),
+            0.25,
+            "5 of 20 extracted specs over-claimed"
+        );
+    }
+
+    /// AC-1: the over-claiming §6 dimension as a total function of the per-arm census,
+    /// pinned against an INDEPENDENT hand-reading of prereg-reallocate.md §6 (not derived
+    /// from the scorer). Covers the inconclusive floor (an arm under E), the E boundary,
+    /// the material-rise direction, and equal-but-high rates (a hard subject, not an
+    /// incentive effect). The rise boundary is bracketed (0.15 < Δ_oc = 0.20 ≤ 0.25)
+    /// rather than knife-edged, because the over-claim rate `1 - valid/extracted` is
+    /// float-derived; the exact threshold is pinned by the test above.
+    #[test]
+    fn reallocate_overclaim_verdict_matches_preregistered_map() {
+        let th = &REALLOCATE_OVERCLAIM_THRESHOLDS;
+        let arm = |valid, extracted| ArmCounts {
+            valid,
+            extracted,
+            trials: extracted,
+        };
+        let cases: &[(&str, ArmCounts, ArmCounts, Verdict)] = &[
+            // ----- inconclusive floor (an arm extracted fewer than E specs) -----
+            (
+                "disinterested extracted = E-1",
+                arm(9, 9),
+                arm(10, 20),
+                Verdict::Inconclusive,
+            ),
+            (
+                "incentivized extracted = E-1",
+                arm(20, 20),
+                arm(5, 9),
+                Verdict::Inconclusive,
+            ),
+            // extracted exactly E passes the floor and is measured
+            (
+                "extracted exactly E, clear rise",
+                arm(10, 10),
+                arm(5, 10),
+                Verdict::Reproduced,
+            ),
+            // ----- reproduced: incentivized over-claim rate rises ≥ Δ_oc -----
+            (
+                "clear material rise (0.5)",
+                arm(20, 20),
+                arm(10, 20),
+                Verdict::Reproduced,
+            ),
+            (
+                "rise 0.25 just above Δ_oc",
+                arm(20, 20),
+                arm(15, 20),
+                Verdict::Reproduced,
+            ),
+            // ----- not-reproduced -----
+            (
+                "rise 0.15 just below Δ_oc",
+                arm(20, 20),
+                arm(17, 20),
+                Verdict::NotReproduced,
+            ),
+            (
+                "wrong direction (incentivized over-claims less)",
+                arm(10, 20),
+                arm(20, 20),
+                Verdict::NotReproduced,
+            ),
+            (
+                "equal high over-claim — no incentive gap",
+                arm(10, 20),
+                arm(10, 20),
+                Verdict::NotReproduced,
+            ),
+        ];
+        for (name, d, i, want) in cases {
+            assert_eq!(
+                overclaim_verdict(d, i, th),
+                *want,
+                "over-claim case: {name}"
+            );
+        }
+    }
+
+    // ===== E-0003 / M-0010 AC-2: the two-dimension combination rule =====
+
+    /// AC-2: `combine_dimensions` is total over the 3×3 (under-spec, over-claim) grid and
+    /// matches an INDEPENDENT hand-written truth table (prereg-reallocate.md §6) — not
+    /// derived from the rule, so a divergence fails the build. Encodes the epic framing:
+    /// the incentive distorted spec quality if EITHER dimension is materially present
+    /// (a Reproduced dominates → PROCEED); both genuine negatives → NO-GO; otherwise the
+    /// unmeasured dimension could flip the call → RERUN-OR-EXPAND.
+    #[test]
+    fn combine_dimensions_matches_preregistered_truth_table() {
+        use Decision::*;
+        use Verdict::*;
+        // (under-specification, over-claiming) → terminal decision for one model.
+        let expected: &[(Verdict, Verdict, Decision)] = &[
+            (Reproduced, Reproduced, Proceed),
+            (Reproduced, NotReproduced, Proceed),
+            (Reproduced, Inconclusive, Proceed),
+            (NotReproduced, Reproduced, Proceed),
+            (NotReproduced, NotReproduced, NoGo),
+            (NotReproduced, Inconclusive, RerunOrExpand),
+            (Inconclusive, Reproduced, Proceed),
+            (Inconclusive, NotReproduced, RerunOrExpand),
+            (Inconclusive, Inconclusive, RerunOrExpand),
+        ];
+        // Totality: every one of the 3×3 = 9 pairs appears exactly once.
+        let all = [Reproduced, NotReproduced, Inconclusive];
+        for a in all {
+            for b in all {
+                let hits = expected
+                    .iter()
+                    .filter(|(x, y, _)| *x == a && *y == b)
+                    .count();
+                assert_eq!(
+                    hits, 1,
+                    "dimension pair ({a:?}, {b:?}) must appear exactly once"
+                );
+            }
+        }
+        assert_eq!(expected.len(), 9, "no pairs beyond the 3×3 grid");
+        // The rule matches the oracle on every pair.
+        for (u, o, want) in expected {
+            assert_eq!(
+                combine_dimensions(*u, *o),
+                *want,
+                "combine_dimensions({u:?}, {o:?})"
+            );
+        }
+    }
+
+    /// The rule is symmetric — the two failure modes are co-equal (neither dimension is
+    /// privileged), so swapping which dimension is which never changes the decision.
+    #[test]
+    fn combine_dimensions_is_symmetric() {
+        use Verdict::*;
+        let all = [Reproduced, NotReproduced, Inconclusive];
+        for a in all {
+            for b in all {
+                assert_eq!(
+                    combine_dimensions(a, b),
+                    combine_dimensions(b, a),
+                    "asymmetric at ({a:?}, {b:?})"
+                );
+            }
+        }
+    }
+
+    // ===== E-0003 / M-0010 AC-3: the composed reallocate §6 prediction map =====
+
+    /// AC-3: `reallocate_verdict` is the COMPOSED total map a multi-model sweep is scored
+    /// against — per model it reuses the shared under-spec `verdict` and the new
+    /// `overclaim_verdict`, folds them with `combine_dimensions`, and anchors the terminal
+    /// on the primary model. Pinned against an INDEPENDENT hand-reading of
+    /// prereg-reallocate.md §6. The cases cover the epic's central scenario (over-claiming
+    /// starves the strength gate, so the over-claim dimension carries the signal), the
+    /// primary-anchored rule (a non-primary model is evidence, never a gate), and the
+    /// unmeasured-primary fallback.
+    #[test]
+    fn reallocate_verdict_matches_preregistered_map() {
+        use Decision::*;
+        use Verdict::*;
+        let strength_th = &PREREG_THRESHOLDS;
+        let overclaim_th = &REALLOCATE_OVERCLAIM_THRESHOLDS;
+        let measure = |valid, tell, easy| ArmMeasure {
+            valid,
+            tell_rate: tell,
+            easy_rate: easy,
+        };
+        let strength = |d, i, inc| SubjectObservation {
+            disinterested: d,
+            incentivized: i,
+            inc,
+        };
+        let census = |valid, extracted| ArmCounts {
+            valid,
+            extracted,
+            trials: extracted,
+        };
+        let obs = |s, cd, ci| ReallocateObservation {
+            strength: s,
+            census_d: cd,
+            census_i: ci,
+        };
+        let tup = |score: &ReallocateScore, model: &str| {
+            let m = score
+                .per_model
+                .iter()
+                .find(|s| s.model == model)
+                .expect("model in sweep");
+            (m.underspec, m.overclaim, m.decision)
+        };
+
+        // ---- the epic's central case: over-claiming on the primary starves the strength
+        // gate (valid_i < V → under-spec Inconclusive), and the over-claim dimension
+        // catches the distortion the strength measure can't → PROCEED ----
+        let s = reallocate_verdict(
+            &[(
+                "opus-4.8",
+                obs(
+                    strength(measure(20, 0.95, 0.95), measure(5, 0.50, 0.95), 0.0),
+                    census(20, 20),
+                    census(5, 20),
+                ),
+            )],
+            strength_th,
+            overclaim_th,
+        );
+        assert_eq!(tup(&s, "opus-4.8"), (Inconclusive, Reproduced, Proceed));
+        assert_eq!(
+            s.terminal, Proceed,
+            "over-claim caught what under-spec couldn't"
+        );
+
+        // ---- primary-anchored: a primary clean negative is the terminal call even when a
+        // weaker model in the sweep shows the distortion (recorded as evidence only) ----
+        let s = reallocate_verdict(
+            &[
+                (
+                    "opus-4.8",
+                    obs(
+                        strength(measure(20, 0.90, 0.90), measure(20, 0.88, 0.90), 0.0),
+                        census(19, 20),
+                        census(18, 20),
+                    ),
+                ),
+                (
+                    "sonnet-4.6",
+                    obs(
+                        strength(measure(20, 0.95, 0.95), measure(20, 0.50, 0.95), 0.0),
+                        census(20, 20),
+                        census(10, 20),
+                    ),
+                ),
+            ],
+            strength_th,
+            overclaim_th,
+        );
+        assert_eq!(tup(&s, "opus-4.8"), (NotReproduced, NotReproduced, NoGo));
+        assert_eq!(
+            tup(&s, "sonnet-4.6"),
+            (Reproduced, Reproduced, Proceed),
+            "the non-primary verdict is recorded as evidence"
+        );
+        assert_eq!(
+            s.terminal, NoGo,
+            "terminal anchors on the primary, not the sweep"
+        );
+
+        // ---- primary unmeasured on both dimensions → the call is unresolved ----
+        let s = reallocate_verdict(
+            &[(
+                "opus-4.8",
+                obs(
+                    strength(measure(20, 0.9, 0.9), measure(20, 0.5, 0.9), 0.5),
+                    census(20, 5),
+                    census(20, 5),
+                ),
+            )],
+            strength_th,
+            overclaim_th,
+        );
+        assert_eq!(
+            tup(&s, "opus-4.8"),
+            (Inconclusive, Inconclusive, RerunOrExpand)
+        );
+        assert_eq!(s.terminal, RerunOrExpand);
+    }
+
+    /// AC-3: the model-coverage decision, mechanically pinned — the terminal decision is
+    /// exactly `PRIMARY_MODEL`'s per-model decision; non-primary models are generalization
+    /// evidence and never change it, and an absent primary is unmeasured → RERUN-OR-EXPAND.
+    #[test]
+    fn reallocate_terminal_anchors_on_primary_model() {
+        let strength_th = &PREREG_THRESHOLDS;
+        let overclaim_th = &REALLOCATE_OVERCLAIM_THRESHOLDS;
+        let measure = |valid, tell, easy| ArmMeasure {
+            valid,
+            tell_rate: tell,
+            easy_rate: easy,
+        };
+        let strength = |d, i, inc| SubjectObservation {
+            disinterested: d,
+            incentivized: i,
+            inc,
+        };
+        let census = |valid, extracted| ArmCounts {
+            valid,
+            extracted,
+            trials: extracted,
+        };
+        let obs = |s, cd, ci| ReallocateObservation {
+            strength: s,
+            census_d: cd,
+            census_i: ci,
+        };
+        // both dimensions reproduced → per-model Proceed
+        let distortion = || {
+            obs(
+                strength(measure(20, 0.95, 0.95), measure(20, 0.50, 0.95), 0.0),
+                census(20, 20),
+                census(10, 20),
+            )
+        };
+        // both dimensions null → per-model NoGo
+        let clean = || {
+            obs(
+                strength(measure(20, 0.90, 0.90), measure(20, 0.89, 0.90), 0.0),
+                census(20, 20),
+                census(19, 20),
+            )
+        };
+        // primary clean, a non-primary shows distortion → terminal is the primary's NoGo
+        let s = reallocate_verdict(
+            &[("opus-4.8", clean()), ("haiku-4.5", distortion())],
+            strength_th,
+            overclaim_th,
+        );
+        assert_eq!(
+            s.terminal,
+            Decision::NoGo,
+            "non-primary evidence cannot gate"
+        );
+        // primary absent → unmeasured
+        let s = reallocate_verdict(
+            &[("sonnet-4.6", distortion()), ("haiku-4.5", distortion())],
+            strength_th,
+            overclaim_th,
+        );
+        assert_eq!(
+            s.terminal,
+            Decision::RerunOrExpand,
+            "primary unmeasured in the sweep"
+        );
+        // the primary's own decision IS the terminal
+        let s = reallocate_verdict(&[("opus-4.8", distortion())], strength_th, overclaim_th);
+        assert_eq!(s.terminal, Decision::Proceed);
+    }
+
+    // ===== E-0003 / M-0010 AC-4: the committed, ancestry-verifiable pre-registration =====
+
+    /// AC-4: the pre-registration document records every element that must be fixed before
+    /// the run — both failure modes, both dimensions' thresholds, the combination rule, the
+    /// model coverage (sweep + primary anchor), and the construct-validity caveat. A silent
+    /// drop of any of these (e.g. a threshold deleted from the prose) fails the build.
+    #[test]
+    fn prereg_reallocate_document_is_complete() {
+        let doc = read(&root().join("prereg-reallocate.md"));
+        for needle in [
+            "under-specification", // failure mode A / dimension
+            "over-claiming",       // failure mode B / dimension
+            "Δ⁺ = 0.20",           // strength material gap
+            "Δ⁰ = 0.10",           // strength localization ceiling
+            "V = 10",              // strength minimum power
+            "I = 0.10",            // strength inconclusive ceiling
+            "Δ_oc = 0.20",         // over-claim material rise
+            "E = 10",              // over-claim minimum extracted
+            "combine_dimensions",  // the combination rule
+            "opus-4.8",            // the pre-registered primary
+            "sonnet-4.6",          // the sweep
+            "haiku-4.5",           // the sweep
+            "primary-anchored",    // the model-coverage rule
+            "{R, F, C}",           // the construct-validity scope
+        ] {
+            assert!(
+                doc.contains(needle),
+                "prereg-reallocate.md must name {needle:?}"
+            );
+        }
+        // the construct-validity caveat itself (the subject is a model, not the prod verb)
+        let lower = doc.to_lowercase();
+        assert!(
+            lower.contains("construct-validity") || lower.contains("construct validity"),
+            "prereg must carry the construct-validity caveat"
+        );
+    }
+
+    /// AC-4: the reallocate prereg is in the set `--check-prereg-ancestry` enforces, so once
+    /// committed the guard requires its commit to precede the run commit. The guard LOGIC is
+    /// proven separately by `ancestry_guard_identifies_prereg_precedence`; this pins that the
+    /// new prereg is actually covered (a typo or omission in `PREREGS` fails here).
+    #[test]
+    fn reallocate_prereg_is_ancestry_guarded() {
+        assert!(
+            PREREGS.contains(&"prereg-reallocate.md"),
+            "the reallocate prereg must be guarded by --check-prereg-ancestry"
+        );
     }
 
     /// AC-2: the ancestry guard correctly decides whether a pre-registration commit
