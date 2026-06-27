@@ -8,14 +8,11 @@ For reference, here is the Dafny context your code will be checked in:
 
 Given the behavior above, write **both**:
 
-(a) a Dafny implementation `function Canonicalize(x: Id): Id`, and
+(a) a Dafny implementation `{{IMPL_SIG}}`, and
 (b) the `ensures` clauses of a lemma
 
 ```dafny
-lemma Spec(x: Id)
-  requires Wellformed(x)
-  ensures …
-{ }
+{{LEMMA_SIG}}
 ```
 
 that your implementation provably satisfies.
