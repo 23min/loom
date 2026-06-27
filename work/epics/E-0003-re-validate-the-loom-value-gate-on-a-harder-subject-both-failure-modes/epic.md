@@ -159,6 +159,7 @@ milestones are allocated; the run is planned once the prereg is authored:
   two-dimension pre-registration**: score both failure modes (under-specification +
   over-claiming), fix each threshold and the combination rule, committed before any
   run (prereg SHA an ancestor of the run). *(depends on `M-0009`)*
-- **Run and decide** *(not yet allocated)* — execute the two-arm run, record the
-  verdict, apply the combination rule, and record the terminal decision
-  discharging this epic.
+- [`M-0011`](M-0011-run-the-reallocate-sweep-and-record-the-terminal-decision.md) —
+  **Run and decide**: execute the two-arm `reallocate` sweep (three models × two arms ×
+  N = 30), apply the frozen `reallocate_verdict`, and record the terminal decision as a
+  decision entity discharging the epic. *(depends on `M-0010`)*
