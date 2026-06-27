@@ -10,7 +10,7 @@ acs:
     - id: AC-1
       title: Each dimension is scored by a committed, threshold-pinned function
       status: open
-      tdd_phase: red
+      tdd_phase: green
     - id: AC-2
       title: The combination rule is total and matches an independent oracle
       status: open
