@@ -51,5 +51,5 @@ modes, not just one.
 | Milestone | Title | Status |
 |---|---|---|
 | M-0008 | Harden the loom-ultralight harness | done |
-| M-0009 | Design the id-reallocation subject | draft |
+| M-0009 | Design the id-reallocation subject | done |
 
