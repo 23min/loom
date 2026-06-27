@@ -54,10 +54,10 @@ every loom subject (`canonicalize`, `fsm`, `prosey`), it is an *idealization* of
 the invariant's shape, not a binding to the real Go tool: the experiment measures
 the Dafny spec an LLM writes, so the subject must be something Z3 can verify and
 whose gold contract we own. Its *shape* is lifted from aiwf's real reallocate
-semantics, which is what makes it a relevant, richer subject than the FSM (three
-independent structural invariants over a tree — no orphan, uniqueness, complete
-reference rewrite — versus a flat edge set), and naturally over-claim-prone,
-exercising E-0003's second dimension.
+semantics, which is what makes it a relevant, richer subject than the FSM (a
+complete pointwise pin over a tree — rename, frame, and a complete reference
+rewrite — versus a flat edge set), and naturally over-claim-prone, exercising
+E-0003's second dimension.
 
 The subject plugs into the existing per-invariant surface (`main.rs`): a gold
 `.dfy` carrying the `BEGIN/END PREAMBLE | REFERENCE IMPL | GOLD SPEC ENSURES`
@@ -93,12 +93,15 @@ fails if the gold contract regresses to unverifiable or the timeout is exceeded.
 
 The `StrengthSubject` obligation goals are pinned **equal** to `reallocate.dfy`'s
 `GOLD SPEC ENSURES` block by a seam guard (the C1/D2 single-source pattern), so
-the strength probe and the gold spec can never drift. The obligation set is three
-**independent** structural invariants, each a single goal — no orphaned old id
-(`O`), id-uniqueness preserved (`U`), and a complete cross-reference rewrite (`C`,
-the tell) — with no redundant or derived clause. The measure discriminates: the
-gold spec entails all three; a hand-weakened spec that pins the two controls but
-drops the reference-rewrite tell entails strictly fewer.
+the strength probe and the gold spec can never drift. The obligation set is the
+three **independent** clauses of the complete pointwise pin, each a single goal —
+the renamed entity becomes `newId` (`R`), every other id is unchanged (`F`, the
+frame), and every cross-reference is rewritten (`C`, the tell) — with no redundant
+or derived clause (the structural invariants no-orphan and uniqueness are
+*entailed* by the pin, so they are proven as consequence lemmas, not scored). The
+measure discriminates: the gold spec entails all three; a hand-weakened spec that
+pins the two controls (`R`, `F`) but drops the reference-rewrite tell entails
+strictly fewer.
 
 **Evidence (mechanical).** A `reallocate_subject_goals_match_gold_ensures` test
 pins every obligation goal to the gold `.dfy` ensures text; a
@@ -110,13 +113,15 @@ from the gold ensures or the measure stops ranking a weaker spec lower.
 ### AC-3 — Mutant bank is clause-isolated and fully killed by the gold spec
 
 A mutant bank (`mutants-reallocate/`, listed in report order in a
-`REALLOCATE_MUTANTS` const) carries **one mutant per obligation clause** — each a
-reference impl wrong in exactly one way: `m_leave_old` forgets the rename, leaving
-an orphaned old id (breaks `O`); `m_collapse_ids` maps every id to `newId`,
-colliding (breaks `U`); `m_keep_refs` leaves references un-rewritten (breaks `C`).
-The gold spec kills the whole bank cleanly; each clause is load-bearing — the
-mutant for clause *k* survives a spec with clause *k* removed, so no mutant is
-redundant and no clause is dead weight.
+`REALLOCATE_MUTANTS` const) carries **a mutant per obligation clause**, plus a
+sharper second tell-violator — each a reference impl wrong in exactly one way:
+`m_leave_old` keeps the old id instead of renaming (breaks `R`); `m_collapse_ids`
+maps every id to `newId`, clobbering the frame (breaks `F`); `m_keep_refs` leaves
+all references un-rewritten and `m_partial_refs` rewrites only the renamed entity's
+refs, forgetting the distant cross-references (both break `C`). The gold spec kills
+the whole bank cleanly; each clause is load-bearing — the mutant for clause *k*
+survives a spec with clause *k* removed, so no mutant is redundant and no clause is
+dead weight.
 
 **Evidence (mechanical).** `--calibrate` reports `killed == bank, survived 0,
 inconclusive 0`; per-clause `reallocate_*` tests assert that removing clause *k*
@@ -145,8 +150,8 @@ over-claim slips through the validity gate.
 The reallocation subject is wired into the `SUBJECTS` registry alongside
 `canonicalize` / `fsm` / `prosey` — gold file, mutants dir + bank, `impl_signature`,
 `intent_file` (authored here, exercised at run time), `StrengthSubject`, and the
-`tell_keys` / `easy_keys` §6 partition (the reference rewrite as the tell, the
-no-orphan and uniqueness invariants as the control). `LOOM_SUBJECT=reallocate --calibrate`
+`tell_keys` / `easy_keys` §6 partition (the reference rewrite as the tell, the id
+map — rename + frame — as the control). `LOOM_SUBJECT=reallocate --calibrate`
 passes end-to-end (validity + clean full-bank kill, subsuming AC-1 and AC-3 over
 the live registry path), and a golden calibration fixture is committed.
 
@@ -180,31 +185,35 @@ fixtures are untouched.
   `newId` and rewrites every `refs` entry `oldId → newId`. `new`/`old` are avoided
   as identifiers (`new` is a Dafny keyword) — hence `oldId` / `newId`.
 - **The gold ensures → obligations decomposition.** Three **independent** Single
-  obligations: `!HasId(result, oldId)` (`O`, no orphan), `Valid(result)` (`U`,
-  uniqueness preserved), and `forall i :: result[i].refs == RwRefs(t[i].refs, …)`
-  (`C`, the complete reference rewrite — the tell). No ladder: reallocation has no
-  natural *graded* axis, and a forced one would leave the seam guard or the mutant
-  bank unclean (see *Decisions made during implementation*). The pointwise id map
-  (which *entails* `O` and `U`) is proven as a consequence lemma in `reallocate.dfy`
-  but deliberately not sliced — stating it would make `O`/`U` redundant.
+  obligations forming the complete pointwise pin: `result[i].id == newId` for the
+  target (`R`), `result[i].id == t[i].id` for every other entity (`F`, the frame),
+  and `result[i].refs == RwRefs(t[i].refs, …)` for all (`C`, the tell). No ladder:
+  reallocation has no natural *graded* axis, and a forced one would leave the seam
+  guard or the mutant bank unclean (see *Decisions made during implementation*). The
+  two structural invariants — no orphaned `oldId`, preserved uniqueness — are
+  *entailed* by `{R, F}`, so they are proven as consequence lemmas in
+  `reallocate.dfy` (`StructuralInvariantsFollow`) but deliberately not sliced —
+  stating them alongside the pin would make them redundant.
 - **One source of truth for the contract.** The gold `.dfy` ensures is the single
   owner; the `StrengthSubject` goals and the kill-rate lemma both derive from it,
   pinned by the AC-2 seam guard (the `{fsm,prosey}_subject_goals_match_gold_ensures`
   pattern). The strength probe states obligations against an `{:opaque} Reallocate`
   so an entailment holds for *any* implementation (`main.rs:915-918`).
 - **Opaque length exposure.** The strength probe's `{:opaque} Reallocate` exposes
-  `|result| == |t|` (length, not contents) so the per-entity `C` clause is
+  `|result| == |t|` (length, not contents) so the per-entity `R`/`F`/`C` clauses are
   well-formed against the hidden body. Length-preservation is not an obligation, so
-  it never leaks into the `{O, U, C}` measure.
+  it never leaks into the `{R, F, C}` measure.
 
 ## Out of scope
 
 - The **two-dimension pre-registration** (the §6 verdict map scoring
   under-specification *and* over-claiming, thresholds, and the combination rule) —
   the next E-0003 milestone, under its own prereg whose SHA must ancestor the run.
-  This milestone names the construct-validity caveat (the subject is a model of
-  the invariant, not the live tool) for that prereg to scope, but does not author
-  it.
+  This milestone names the construct-validity caveat for that prereg to scope: the
+  subject is a model of the invariant, not the live tool, and the instrument
+  observes under-specification only along the obligation axes it pins (`R`, `F`,
+  `C`) — any claim must scope to those, not to "reallocate specs" in general. It
+  does not author the prereg.
 - The **two-arm run and the terminal decision** — the milestone after the prereg.
 - Any change to `canonicalize` / `fsm` / `prosey`, their goldens, or E-0002's
   frozen results.
@@ -221,17 +230,29 @@ fixtures are untouched.
 
 ## Decisions made during implementation
 
-- **Three independent Single obligations, not a graded ladder.** AC-2 was authored
-  describing a frame-completeness *ladder*. Building the mutant bank surfaced a hard
-  constraint: reallocation's candidate obligations have logical dependencies — the
-  pointwise id map *implies* the structural invariants (no-orphan, uniqueness), and
-  length clauses tangle with index-based ones — so a clause-isolated mutant bank
-  (AC-3's load-bearing requirement: one mutant violating exactly one clause) only
-  exists for a **mutually independent** obligation set. The set that is both
-  independent *and* captures reallocation's essence is the three structural
-  invariants `{O, U, C}`, all Single (like the FSM), each with a clean isolated
-  mutant. This is *more* faithful than a forced ladder (no artificial graded axis)
-  and keeps the C1 single-source seam clean. The over-claim fixture ("references
-  unchanged") is the exact mirror of the tell (`C`), a deliberate symmetry for
-  E-0003's two failure modes. Recorded here rather than as a separate decision
-  entity — it is a within-milestone design refinement, not an architectural change.
+- **Independent Single obligations, not a graded ladder.** AC-2 was authored
+  describing a frame-completeness *ladder*. The harness's ladder mechanism does
+  exist for nested obligations (canonicalize's width axis), but reallocation has no
+  natural *graded* axis, and its candidate clauses have logical dependencies that
+  make a clause-isolated mutant bank (AC-3's load-bearing requirement: a mutant
+  violating exactly one clause) clean only for a **mutually independent** set. So the
+  obligations are independent Singles (like the FSM), each with a clean isolated
+  mutant — more faithful than a forced ladder, and the C1 single-source seam stays
+  clean.
+- **The gold is the complete pin `{R, F, C}`, not the structural invariants
+  `{O, U, C}`.** The first cut used the three structural invariants — no-orphan
+  (`O`), uniqueness (`U`), complete rewrite (`C`). Independent review (the design
+  lens) caught that `{O, U, C}` is *incomplete*: it never pins that the renamed
+  entity becomes `newId`, so an impl that renames the target to a *wrong* fresh id
+  while rewriting refs to `newId` satisfies all three yet leaves a dangling
+  reference — and, worse for the experiment, a faithful spec that *does* pin the
+  rename would score identically to one that omits it (the G-0002
+  richer-spec-invisibility pattern, structural this time). The fix: the gold is the
+  **complete pointwise pin** — target renamed (`R`), frame preserved (`F`),
+  references rewritten (`C`). The same three mutants re-attribute cleanly
+  (`m_leave_old`→`R`, `m_collapse_ids`→`F`, `m_keep_refs`→`C`), a fourth
+  (`m_partial_refs`, the realistic forgot-the-distant-refs case) sharpens the `C`
+  tell, and `{O, U}` survive as proven consequence lemmas. The over-claim fixture
+  ("references unchanged") is the exact mirror of the tell (`C`). Recorded here
+  rather than as a separate decision entity — a within-milestone refinement
+  (including the review correction), not an architectural change.
