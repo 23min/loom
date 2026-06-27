@@ -24,7 +24,7 @@ acs:
     - id: AC-5
       title: Canonicalize golden re-baselined with opus-4.8 verdict unchanged
       status: open
-      tdd_phase: red
+      tdd_phase: green
 ---
 
 ## Goal
