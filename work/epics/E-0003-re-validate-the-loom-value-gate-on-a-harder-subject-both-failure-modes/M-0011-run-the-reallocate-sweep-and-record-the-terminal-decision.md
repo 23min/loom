@@ -1,7 +1,7 @@
 ---
 id: M-0011
 title: Run the reallocate sweep and record the terminal decision
-status: in_progress
+status: done
 parent: E-0003
 depends_on:
     - M-0010
