@@ -16,6 +16,10 @@ acs:
       title: Model-defined spec helpers are captured into the program
       status: open
       tdd_phase: red
+    - id: AC-3
+      title: Guarded id-quantifiers execute via a bounded rewrite
+      status: open
+      tdd_phase: red
 ---
 
 ## Goal
@@ -25,4 +29,6 @@ acs:
 ### AC-1 — Spec extraction terminates at the lemma boundary
 
 ### AC-2 — Model-defined spec helpers are captured into the program
+
+### AC-3 — Guarded id-quantifiers execute via a bounded rewrite
 
