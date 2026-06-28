@@ -11,6 +11,9 @@ acs:
     - id: AC-2
       title: The transition logic is modeled in Dafny and cross-checked for fidelity
       status: open
+    - id: AC-3
+      title: 'The loop closes: a gap report is produced and recorded'
+      status: open
 ---
 
 ## Goal
@@ -20,4 +23,6 @@ acs:
 ### AC-1 — The FSM umbrella is authored under the burden split
 
 ### AC-2 — The transition logic is modeled in Dafny and cross-checked for fidelity
+
+### AC-3 — The loop closes: a gap report is produced and recorded
 
