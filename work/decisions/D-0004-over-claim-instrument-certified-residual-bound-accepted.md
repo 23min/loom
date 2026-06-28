@@ -20,7 +20,11 @@ gate (60/60 generated) bounds both error directions:
   non-mutant shapes) is each caught, and the calibration caught a *real* model over-claim
   (`haiku-4.5` incentivized → `ExecOverclaim`). The guard rewrite and `<==>` normalization only
   add validity to specs the verifier rejected and never weaken a spec (pinned by
-  `iff_normalization_does_not_mask_an_overclaim`).
+  `iff_normalization_does_not_mask_an_overclaim`). An independent adversarial review hardened one
+  case: the guarded rewrite now enforces a **fresh** index (it bails to `Unexecutable` if its new
+  binder would shadow a same-named variable in the spec), so it is an exact equivalence whenever it
+  fires — pinned by `guarded_rewrite_does_not_capture_a_same_named_binder`. With that guard, no
+  transform can turn a genuine over-claim into a valid.
 - **False-invalids ≈ 3.3%** (2/60 `unexecutable`), down from 20% on the opus disinterested arm
   before the fixes. The residual is the **genuine undecidable class**: an unbounded id-quantifier
   in a *bare-iff* form (`forall x: Id :: A(x) <==> B(x)`, no boundable `HasId(t, x) ==>` guard)
@@ -45,9 +49,17 @@ arm across calibrations, with the dominant causes eliminated.
   class is surfaced so a high recorded-run residual would itself be a visible RERUN-OR-EXPAND
   signal.
 - **Soundness over coverage held throughout.** Every transform is sound (the guard rewrite is an
-  exact equivalence; the `<==>` normalization only re-parenthesizes a consequent that already
-  contains an iff; helper capture only adds the model's own definitions). A spec that cannot be
-  soundly decided is left `Unexecutable` (surfaced), never a false valid.
+  exact equivalence under the enforced freshness guard; the `<==>` normalization only
+  re-parenthesizes a consequent that already contains an iff; helper capture only adds the model's
+  own definitions). A spec that cannot be soundly decided is left `Unexecutable` (surfaced), never
+  a false valid.
+- **Helper-capture relevance gap (known, not a false-valid).** Capturing model helpers widened what
+  validates: a model that defines its OWN implementation under a name other than `Reallocate` and
+  writes `ensures` about that name validates against its own definition rather than constraining the
+  reference impl. This is not an over-claim marked valid (the statement is true), so it does not
+  corrupt the over-claim numerator; it is an under-specification the strength dimension and the
+  `probe_spec` `probe_error` path absorb. No archived response does this; flagged for the run's
+  audit.
 - **Pre-registration preserved.** The §6 procedure, thresholds, combination rule, and predictions
   (`prereg-reallocate.md`, `bb1d220`) are untouched; the frozen `1 − valid/extracted` formula is
   unchanged. `M-0013` changed only how validity is *decided*, before the recorded run, and is a
