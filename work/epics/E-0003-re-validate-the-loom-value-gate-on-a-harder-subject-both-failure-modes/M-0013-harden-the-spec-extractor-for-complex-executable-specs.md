@@ -23,7 +23,7 @@ acs:
     - id: AC-4
       title: Enriched battery rejects over-claims with no false-valids
       status: open
-      tdd_phase: green
+      tdd_phase: done
     - id: AC-5
       title: Calibration bounds the residual and confirms no arm bias
       status: open
