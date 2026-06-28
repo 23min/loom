@@ -14,6 +14,9 @@ acs:
     - id: AC-3
       title: 'The loop closes: a gap report is produced and recorded'
       status: open
+    - id: AC-4
+      title: The four observations are recorded
+      status: open
 ---
 
 ## Goal
@@ -25,4 +28,6 @@ acs:
 ### AC-2 — The transition logic is modeled in Dafny and cross-checked for fidelity
 
 ### AC-3 — The loop closes: a gap report is produced and recorded
+
+### AC-4 — The four observations are recorded
 
