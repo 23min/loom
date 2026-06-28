@@ -1,8 +1,10 @@
 ---
 id: G-0006
 title: reallocate validity gate rejects correct-but-not-auto-provable specs
-status: open
+status: addressed
 discovered_in: M-0011
+addressed_by:
+    - M-0012
 ---
 ## What's missing
 
