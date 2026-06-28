@@ -112,3 +112,79 @@ unchanged; a regression test pins that the `G-0006` spec is now valid.
 - Depends on `M-0010` (the instrument + frozen §6) and the `M-0009` calibration it
   re-validates; addresses `G-0006` per `D-0003`.
 - **Blocks `M-0011`'s run** — the run resumes once the gate is sound.
+
+## Work log
+
+Implementation landed in `feat(loom-ultralight): hybrid validity gate with execution fallback`
+(commit `229750f`). The `Validity` enum + `is_valid`/`label`, `ensures_to_conjunction`, the Go
+backend helpers (`go_backend_path_env` / `go_backend_available` / `run_dafny_exec`),
+`run_battery` / `execute_validity`, the rewritten `validate_spec`, `ExecCase` + per-subject
+`exec_battery` (`REALLOCATE_BATTERY`), and the census surfacing all land in that one commit, plus
+the README toolchain note. The post-review corrective changes (fail-fast `require_exec_backend`,
+the `inconclusive` census column, the empty-`ensures` guard) are folded into the same commit.
+
+- **AC-1** — hybrid gate with four distinct classifications. `reallocate_gold_spec_is_valid…`
+  (Provable), `reallocate_smoke_opus_disinterested_validates_via_execution` (ExecValid + verify
+  rejects it), `reallocate_over_claim_is_caught_by_validity_gate` (ExecOverclaim),
+  `reallocate_ghost_only_spec_is_unexecutable` (Unexecutable), plus
+  `validity_partition_and_labels_are_total` and `ensures_to_conjunction_splits_clauses_and_scopes_comments`.
+  · commit `229750f`
+- **AC-2** — `REALLOCATE_BATTERY` committed; `reallocate_battery_cases_satisfy_precondition` and
+  `reallocate_battery_distinguishes_every_violation` prove every {R,F,C} mutant mode is exposed.
+  · commit `229750f`
+- **AC-3** — calibration green under the hybrid gate; `reallocate_gold_calibrates_clean`,
+  `reallocate_over_claim_is_caught_by_validity_gate`, the (ignored) `production_scorer_calibrates_every_subject`,
+  and the `G-0006` regression all pass. · commit `229750f`
+
+## Decisions made during implementation
+
+- **`D-0003`** (accepted, pre-milestone) — the hybrid `dafny verify` + concrete-tree execution
+  gate. Implemented here.
+- **Post-review hardening (folded into `229750f`).** The independent two-lens review surfaced
+  that an `Inconclusive` spec (Go backend absent, or a verify/exec timeout) was counted in
+  `extracted − valid` (the over-claim numerator) but not surfaced — so a backend-absent run
+  would silently corrupt the exact §6 number this milestone fixes. Resolved two ways, keeping
+  the frozen `1 − valid/extracted` formula byte-for-byte: (1) `require_exec_backend` fails the
+  run fast on a battery subject when the backend is absent ("degrade clearly", `D-0003`); (2) an
+  `inconclusive` census column parallel to `unexecutable` in `results.json` / the table, so the
+  residual is auditable. Also guarded the empty-`ensures` → vacuous-`true` path to
+  `Unexecutable` rather than a silent valid.
+
+## Validation
+
+- `cargo test`: **53 passed; 0 failed; 4 ignored** (the 4 ignored are the slow full sweeps).
+- Slow production-path calibration: `cargo test production_scorer_calibrates_every_subject --
+  --ignored` → **1 passed** (every subject's gold validates + kills its full bank under the new
+  gate).
+- `cargo clippy --all-targets -- -D warnings`: clean. `cargo fmt --check`: clean. Build: green.
+- Toolchain present and exercised end-to-end: dafny 4.9.0, go (`/usr/local/go/bin`), goimports
+  (`$HOME/go/bin`). The four AC-1 classifications and both AC-2 tests run the real Go backend.
+- `prereg-reallocate.md` is unmodified (still at freeze commit `bb1d220`); the diff touches only
+  `src/main.rs` and `README.md`.
+
+## Deferrals
+
+None blocking. No deferred ACs; no new gaps required.
+
+## Reviewer notes
+
+- **Independent two-lens review (fresh-context).** Code review: **APPROVE** (5 non-blocking
+  findings). Design review: **well-shaped**, one finding to fix before wrap. Both converged on
+  the `Inconclusive` silent-fold, which is fixed (see Decisions). The remaining corrective
+  changes are small and directly responsive to the reviewers; confirmed mechanically (tests
+  green) rather than re-dispatching a full review round.
+- **Notes deferred as fine-as-is (reviewer-endorsed):** the `LOOM_CASE <i>=` marker parse is a
+  prefix match but safe under emission order with the 3-case battery (worst case a safe
+  `Unexecutable`, never a false valid); `run_dafny_exec` mirrors `run_dafny`'s wait-then-read
+  (deadlock-free while output stays under the pipe buffer — bounded for the tiny battery
+  program); the clause-splitting convention is encoded in three functions
+  (`extract_spec_ensures`, `ensures_to_requires`, `ensures_to_conjunction`) — a mild C1 latent
+  worth unifying if a second executable-spec subject lands, left as-is for now.
+- **Deliberately untested branches (environmental degradation).** The backend-absent path
+  (`execute_validity` → `Inconclusive`; `require_exec_backend` → exit) and the verify/exec
+  timeout → `Inconclusive` path are not unit-tested — they need the toolchain removed or a real
+  hang. The testable predicate `exec_backend_missing` is pinned for the empty-battery
+  short-circuit (`exec_backend_not_required_without_a_battery`).
+- **Scope held.** §6 procedure / thresholds / combination rule / prereg untouched; the kill-rate
+  scorer is corroborating (not the §6 over-claim measure) and is left unchanged per the design
+  note.
