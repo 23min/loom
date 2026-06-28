@@ -55,5 +55,5 @@ modes, not just one.
 | M-0010 | Author the two-dimension pre-registration | done |
 | M-0011 | Run the reallocate sweep and record the terminal decision | in_progress |
 | M-0012 | Harden the validity gate for executable-spec subjects | done |
-| M-0013 | Harden the spec extractor for complex executable specs | draft |
+| M-0013 | Harden the spec extractor for complex executable specs | done |
 
