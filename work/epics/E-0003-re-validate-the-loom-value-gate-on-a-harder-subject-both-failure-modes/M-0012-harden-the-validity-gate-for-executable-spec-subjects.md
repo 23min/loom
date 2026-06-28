@@ -9,7 +9,7 @@ tdd: required
 acs:
     - id: AC-1
       title: The validity gate falls back to concrete-tree execution for unprovable specs
-      status: open
+      status: met
       tdd_phase: done
     - id: AC-2
       title: A committed concrete-tree battery covers the over-claim violation modes
