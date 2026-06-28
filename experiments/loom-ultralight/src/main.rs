@@ -410,6 +410,14 @@ fn rewrite_one_forall(inner: &str, n: usize) -> Option<String> {
     }
     let tree = tree?;
     let ix = format!("q_{n}");
+    // Freshness guard (M-0013 soundness): the rewrite binds a new `forall {ix}`. If `{ix}`
+    // already occurs anywhere in this forall (e.g. an enclosing binder named `q_0` the body
+    // references), the new binder would SHADOW it and silently change the formula — a possible
+    // false-valid. Bail instead, leaving the quantifier `Unexecutable` (surfaced), so the
+    // rewrite is an exact equivalence whenever it fires.
+    if inner.contains(&ix) {
+        return None;
+    }
     let other = others
         .into_iter()
         .filter(|o| !o.is_empty())
@@ -5153,6 +5161,9 @@ lemma Spec(t: Tree, oldId: Id, newId: Id)\n\
             "(forall i, k :: 0 <= i < |t| ==> P(i, k))", // multi-variable
             "(forall x :: x > newId)",                   // genuinely unbounded — no HasId to bound
             "(forall i :: 0 <= i < |t| ==> Q(i))",       // already bounded, no HasId
+            // the fresh index `q_0` already occurs in the body (an enclosing binder) → bail, so the
+            // new `forall q_0` cannot SHADOW it and silently change the formula (soundness guard).
+            "(forall x :: HasId(t, x) ==> x == t[q_0].id)",
         ] {
             assert_eq!(
                 rewrite_guarded_id_quantifiers(unchanged),
@@ -5160,6 +5171,33 @@ lemma Spec(t: Tree, oldId: Id, newId: Id)\n\
                 "must bail unchanged"
             );
         }
+    }
+
+    /// AC-3/AC-4 soundness regression (adversarial review): the guarded-quantifier rewrite must not
+    /// CAPTURE a same-named enclosing binder and turn an over-claim into a valid. The over-claim
+    /// "every id in the tree equals every other" (`forall x :: HasId(t,x) ==> x == t[q_0].id`, under
+    /// an enclosing `forall q_0`) is false on any multi-id battery tree; the fresh index would be
+    /// `q_0`, so the rewrite must bail (leaving it Unexecutable), never `ExecValid`.
+    #[test]
+    fn guarded_rewrite_does_not_capture_a_same_named_binder() {
+        let subject = subject_by_name("reallocate").unwrap();
+        let (preamble, ref_impl, _gold) = gold_slices(subject);
+        let wd = fixture_workdir("m0013-capture");
+        let over = "  ensures forall q_0 :: 0 <= q_0 < |t| ==> (forall x :: HasId(t, x) ==> x == t[q_0].id)";
+        let v = validate_spec(
+            &wd,
+            &preamble,
+            &ref_impl,
+            &subject.strength,
+            over,
+            Duration::from_secs(60),
+            "",
+        );
+        assert!(
+            !v.is_valid(),
+            "a variable-capturing over-claim must NOT validate (got {})",
+            v.label()
+        );
     }
 
     /// The actual `M-0011` smoke `sonnet-4.6` disinterested response (G-0007): a correct spec whose
