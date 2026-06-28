@@ -14,7 +14,7 @@ acs:
     - id: AC-2
       title: A committed concrete-tree battery covers the over-claim violation modes
       status: open
-      tdd_phase: red
+      tdd_phase: green
     - id: AC-3
       title: M-0009 calibration holds under the new validity gate
       status: open
