@@ -315,6 +315,224 @@ fn ensures_to_conjunction(spec_ensures: &str) -> String {
         .join("\n  && ")
 }
 
+/// Split a string into its top-level (paren/bracket-depth-0) `&&` conjuncts.
+fn split_top_conjuncts(s: &str) -> Vec<&str> {
+    let b = s.as_bytes();
+    let mut depth = 0i32;
+    let (mut parts, mut start, mut i) = (Vec::new(), 0usize, 0usize);
+    while i < b.len() {
+        match b[i] {
+            b'(' | b'[' => depth += 1,
+            b')' | b']' => depth -= 1,
+            b'&' if depth == 0 && i + 1 < b.len() && b[i + 1] == b'&' => {
+                parts.push(&s[start..i]);
+                i += 2;
+                start = i;
+                continue;
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    parts.push(&s[start..]);
+    parts
+}
+
+/// Split at the first top-level `==>` (not the `<==>` of an iff). `(before, after)`.
+fn split_top_implication(s: &str) -> Option<(&str, &str)> {
+    let b = s.as_bytes();
+    let mut depth = 0i32;
+    let mut i = 0usize;
+    while i + 2 < b.len() {
+        match b[i] {
+            b'(' | b'[' => depth += 1,
+            b')' | b']' => depth -= 1,
+            b'=' if depth == 0
+                && b[i + 1] == b'='
+                && b[i + 2] == b'>'
+                && (i == 0 || b[i - 1] != b'<') =>
+            {
+                return Some((&s[..i], &s[i + 3..]));
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    None
+}
+
+/// Split at the first top-level comma. `(before, after)`.
+fn split_top_comma(s: &str) -> Option<(&str, &str)> {
+    let b = s.as_bytes();
+    let mut depth = 0i32;
+    for i in 0..b.len() {
+        match b[i] {
+            b'(' | b'[' => depth += 1,
+            b')' | b']' => depth -= 1,
+            b',' if depth == 0 => return Some((&s[..i], &s[i + 1..])),
+            _ => {}
+        }
+    }
+    None
+}
+
+/// If `c` is exactly a `HasId(<tree>, <var>)` call (the rewrite's guard), return `<tree>`.
+fn parse_hasid_guard(c: &str, var: &str) -> Option<String> {
+    let inner = c.trim().strip_prefix("HasId(")?.strip_suffix(')')?;
+    let (tree, x) = split_top_comma(inner)?;
+    (x.trim() == var).then(|| tree.trim().to_string())
+}
+
+/// Rewrite one `forall <var> :: <guards> ==> <body>` (the inside of its parens) to bounded
+/// iteration when a guard is `HasId(<tree>, <var>)` — binding `<var>` to `<tree>[<ix>].id` with a
+/// `var`-let (no fragile substitution), a sound equivalence. Returns `None` (bail, leaving the
+/// quantifier `Unexecutable`) on a multi-variable forall, a missing `HasId` guard, or any shape it
+/// does not recognize — never a wrong rewrite.
+fn rewrite_one_forall(inner: &str, n: usize) -> Option<String> {
+    let after_kw = inner.trim().strip_prefix("forall ")?;
+    let var: String = after_kw
+        .chars()
+        .take_while(|c| c.is_alphanumeric() || *c == '_')
+        .collect();
+    if var.is_empty() {
+        return None;
+    }
+    // single-variable only: after the name must come `::` (a `,` means `forall x, y` → bail)
+    let body_all = after_kw[var.len()..].trim_start().strip_prefix("::")?;
+    let (guard, body) = split_top_implication(body_all)?;
+    let mut tree: Option<String> = None;
+    let mut others: Vec<&str> = Vec::new();
+    for c in split_top_conjuncts(guard) {
+        match parse_hasid_guard(c, &var) {
+            Some(tr) if tree.is_none() => tree = Some(tr),
+            _ => others.push(c.trim()),
+        }
+    }
+    let tree = tree?;
+    let ix = format!("q_{n}");
+    // Freshness guard (M-0013 soundness): the rewrite binds a new `forall {ix}`. If `{ix}`
+    // already occurs anywhere in this forall (e.g. an enclosing binder named `q_0` the body
+    // references), the new binder would SHADOW it and silently change the formula — a possible
+    // false-valid. Bail instead, leaving the quantifier `Unexecutable` (surfaced), so the
+    // rewrite is an exact equivalence whenever it fires.
+    if inner.contains(&ix) {
+        return None;
+    }
+    let other = others
+        .into_iter()
+        .filter(|o| !o.is_empty())
+        .collect::<Vec<_>>()
+        .join(" && ");
+    let letbody = if other.is_empty() {
+        format!("(var {var} := {tree}[{ix}].id; {})", body.trim())
+    } else {
+        format!(
+            "(var {var} := {tree}[{ix}].id; ({other}) ==> {})",
+            body.trim()
+        )
+    };
+    Some(format!("forall {ix} :: 0 <= {ix} < |{tree}| ==> {letbody}"))
+}
+
+/// Rewrite guarded unbounded id-quantifiers in a spec's `ensures` to bounded iteration
+/// (M-0013/G-0007), so a correct spec that quantifies over present ids executes — `forall x ::
+/// HasId(t, x) ==> P(x)` is equivalent to iterating `x := t[i].id` over the tree. Applied only on
+/// the EXECUTION path (the verifier reasons about the original form); conservative — it only
+/// rewrites a paren-wrapped, single-variable `(forall x :: … HasId(tree, x) …)` and leaves
+/// everything else byte-for-byte unchanged, so it can never make an over-claim validate.
+/// Apply `f` to the INSIDE of each top-level `(forall …)` group; `Some` replaces the group
+/// (re-wrapped in parens), `None` leaves it byte-for-byte unchanged. Byte scanning is safe — a
+/// `(`/`)` byte never occurs inside a UTF-8 multibyte sequence.
+fn map_paren_foralls(s: &str, mut f: impl FnMut(&str) -> Option<String>) -> String {
+    let mut out = String::new();
+    let mut rest = s;
+    while let Some(open) = rest.find("(forall ") {
+        let b = rest.as_bytes();
+        let mut depth = 0i32;
+        let mut close = None;
+        for (i, &byte) in b.iter().enumerate().skip(open) {
+            match byte {
+                b'(' => depth += 1,
+                b')' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        close = Some(i);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        let Some(close) = close else {
+            break; // unbalanced — leave the remainder untouched
+        };
+        out.push_str(&rest[..open]);
+        match f(&rest[open + 1..close]) {
+            Some(rw) => {
+                out.push('(');
+                out.push_str(&rw);
+                out.push(')');
+            }
+            None => out.push_str(&rest[open..=close]),
+        }
+        rest = &rest[close + 1..];
+    }
+    out.push_str(rest);
+    out
+}
+
+fn rewrite_guarded_id_quantifiers(spec_ensures: &str) -> String {
+    let mut n = 0usize;
+    map_paren_foralls(spec_ensures, |inner| {
+        let rw = rewrite_one_forall(inner, n);
+        if rw.is_some() {
+            n += 1;
+        }
+        rw
+    })
+}
+
+/// Does `s` contain a top-level (paren/bracket-depth-0) `<==>` (iff)?
+fn has_top_iff(s: &str) -> bool {
+    let b = s.as_bytes();
+    let mut depth = 0i32;
+    let mut i = 0usize;
+    while i + 3 < b.len() {
+        match b[i] {
+            b'(' | b'[' => depth += 1,
+            b')' | b']' => depth -= 1,
+            b'<' if depth == 0 && b[i + 1] == b'=' && b[i + 2] == b'=' && b[i + 3] == b'>' => {
+                return true
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    false
+}
+
+/// Wrap the implication consequent of one `forall <vars> :: <ante> ==> <cons>` when `<cons>` has a
+/// top-level `<==>` — recovering the intended `<ante> ==> (<cons>)`. Dafny parses `==> A <==> B`
+/// as `(==> A) <==> B` (iff binds loosest), which moves the range out of the quantifier domain so
+/// it cannot compile (G-0007). `None` when there is no implication or no top-level iff.
+fn normalize_one_forall_iff(inner: &str) -> Option<String> {
+    let dc = inner.find("::")?;
+    let head = &inner[..dc + 2];
+    let (ante, cons) = split_top_implication(&inner[dc + 2..])?;
+    has_top_iff(cons).then(|| format!("{head} {} ==> ({})", ante.trim(), cons.trim()))
+}
+
+/// Normalize the `<==>`-precedence footgun (M-0013/G-0007) in a spec's `ensures`: in each
+/// `(forall …)` body, parenthesize an implication consequent that contains a top-level `<==>`, so
+/// `forall i :: 0 <= i < |t| ==> A <==> B` recovers the intended `… ==> (A <==> B)` and compiles.
+/// Applied on the EXECUTION path only — the verifier already rejects the ill-formed literal form,
+/// and the gate's verdict then reflects the model's intended contract. Conservative: it only adds
+/// parentheses around a consequent that already contains an iff; it never weakens a spec, so it
+/// cannot turn an over-claim into a valid (a `<==>`-typo over-claim stays an over-claim).
+fn normalize_iff_precedence(spec_ensures: &str) -> String {
+    map_paren_foralls(spec_ensures, normalize_one_forall_iff)
+}
+
 /// Extra directories appended to the child `PATH` so the Dafny Go backend (`go` +
 /// `goimports`) resolves. The contract is "go + goimports on `PATH`"; this convenience
 /// also probes a `LOOM_GO_BIN` override (colon-separated) and the well-known toolchain
@@ -533,7 +751,13 @@ fn execute_validity(
         );
         return Validity::Inconclusive;
     }
-    let conj = ensures_to_conjunction(spec_ensures);
+    // M-0013: two execution-path-only normalizations (the verifier reasoned about the literal
+    // form), so correct specs execute instead of failing to compile: (1) recover the intended
+    // `==> (A <==> B)` grouping the `<==>`-precedence footgun mangles; (2) rewrite guarded
+    // id-quantifiers (`forall x :: HasId(t,x) ==> …`) to bounded iteration.
+    let normalized = normalize_iff_precedence(spec_ensures);
+    let rewritten = rewrite_guarded_id_quantifiers(&normalized);
+    let conj = ensures_to_conjunction(&rewritten);
     if conj == "true" {
         // No real `ensures` clause survived extraction (a truncated/empty spec that the
         // verifier already rejected). A vacuous `true` predicate would execute valid on every
@@ -570,6 +794,18 @@ fn execute_validity(
 /// (`VerifyReject`). Single owner of "valid" (C1): both the kill-rate scorer (`score_spec`)
 /// and the strength probe (`probe_spec`) consult `Validity::is_valid`, so an over-claim is
 /// excluded from both measures and never inflates either toward the null.
+/// Prepend the candidate's captured helper definitions (M-0013) to an implementation body, so an
+/// `ensures` that calls a model-defined helper resolves once assembled. Empty helpers ⇒ the impl
+/// unchanged. The same combine applies to the reference impl (validity) and each mutant body
+/// (kill-rate), so the helper is in scope wherever the candidate's `ensures` is assembled.
+fn with_helpers(helpers: &str, impl_src: &str) -> String {
+    if helpers.trim().is_empty() {
+        impl_src.to_string()
+    } else {
+        format!("{helpers}\n\n{impl_src}")
+    }
+}
+
 fn validate_spec(
     workdir: &Path,
     preamble: &str,
@@ -577,13 +813,15 @@ fn validate_spec(
     subject: &StrengthSubject,
     spec_ensures: &str,
     timeout: Duration,
+    helpers: &str,
 ) -> Validity {
+    let impl_src = with_helpers(helpers, ref_impl);
     let vfile = workdir.join("_validity.dfy");
     fs::write(
         &vfile,
         assemble(
             preamble,
-            ref_impl,
+            &impl_src,
             spec_ensures,
             subject.binder,
             subject.requires,
@@ -597,12 +835,15 @@ fn validate_spec(
             if subject.exec_battery.is_empty() {
                 Validity::VerifyReject
             } else {
-                execute_validity(workdir, preamble, ref_impl, subject, spec_ensures, timeout)
+                execute_validity(workdir, preamble, &impl_src, subject, spec_ensures, timeout)
             }
         }
     }
 }
 
+// All args are load-bearing (the M-0013 `helpers` is the 8th); grouping them into a struct would
+// ripple through every call site for no clarity gain.
+#[allow(clippy::too_many_arguments)]
 fn score_spec(
     workdir: &Path,
     preamble: &str,
@@ -611,6 +852,7 @@ fn score_spec(
     mutants: &BTreeMap<String, String>,
     spec_ensures: &str,
     timeout: Duration,
+    helpers: &str,
 ) -> Score {
     let mut score = Score::empty();
     let v = validate_spec(
@@ -620,6 +862,7 @@ fn score_spec(
         &subject.strength,
         spec_ensures,
         timeout,
+        helpers,
     );
     score.validity = v;
     if !v.is_valid() {
@@ -638,9 +881,17 @@ fn score_spec(
             }
         };
         let mf = workdir.join(format!("_{name}.dfy"));
+        // The helper is in scope for the kill-rate assembly too (the candidate's `ensures` may
+        // call it against the mutant impl), so prepend it to each mutant body as well.
         fs::write(
             &mf,
-            assemble(preamble, body, spec_ensures, binder, requires),
+            assemble(
+                preamble,
+                &with_helpers(helpers, body),
+                spec_ensures,
+                binder,
+                requires,
+            ),
         )
         .unwrap();
         let (o, _log) = run_dafny(&mf, timeout);
@@ -683,11 +934,13 @@ fn load_mutants(root: &Path, subject: &Subject) -> BTreeMap<String, String> {
 /// terser specs the incentivized arm tends to write (see G-0002). A spec with no
 /// `ensures` at all yields None and is recorded as an extraction error.
 ///
-/// Limitation: the lemma body is detected as the first line whose trimmed text
-/// begins with `{`. A continuation line that *starts* with a set/map literal `{`
-/// would end the block early; no spec in this bank does that, and calibration of
-/// the gold spec (which bypasses this path) plus the validity gate catch gross
-/// breakage.
+/// The clause region ends at the lemma boundary: a trimmed line that starts with `{` (the
+/// body opens), `}` (the body closes — the M-0013/G-0007 case, where a model wrote no
+/// `{`-led line so the body brace is not at line-start), or ` ``` ` (the code fence closes).
+/// Without the `}`/fence terminators the extractor ran past the lemma into the response's
+/// prose, capturing unparseable text (the `opus-4.8` smoke spec). A continuation line that
+/// *starts* with a set/map literal `{`/`}` would end the block early; no spec in this bank
+/// does that, and the validity gate catches gross breakage.
 fn extract_spec_ensures(resp: &str) -> Option<String> {
     let start = resp.find("lemma Spec")?;
     let after = &resp[start..];
@@ -695,8 +948,8 @@ fn extract_spec_ensures(resp: &str) -> Option<String> {
     let mut seen_ensures = false;
     for line in after.lines().skip(1) {
         let t = line.trim();
-        if t.starts_with('{') {
-            break; // lemma body — the clause region is done
+        if t.starts_with('{') || t.starts_with('}') || t.starts_with("```") {
+            break; // lemma body / code-fence boundary — the clause region is done
         }
         if t.starts_with("requires") {
             continue; // controlled away — the harness fixes the precondition
@@ -717,6 +970,73 @@ fn extract_spec_ensures(resp: &str) -> Option<String> {
     } else {
         Some(lines.join("\n"))
     }
+}
+
+/// Extract the model-defined helper definitions (`function`/`predicate`) from a candidate
+/// response (M-0013/G-0007), so an `ensures` that calls a helper resolves once assembled.
+/// Excludes the reference impl `Reallocate` (the harness supplies its own) and any preamble
+/// symbol, and de-duplicates by name (a revised response may define a helper twice). Each decl is
+/// captured by brace-matching its body. Returns the helper source (possibly empty), to be
+/// assembled between the preamble and the lemma.
+///
+/// Limitation: brace-matching counts every `{`/`}`, so a helper using a `{:attribute}` would be
+/// truncated; no model helper in this study does that. A spec referencing an UNdefined symbol
+/// (not a real helper) is left unresolved → `Unexecutable` (surfaced), never a false valid.
+fn extract_spec_helpers(resp: &str) -> String {
+    const EXCLUDE: &[&str] = &["Reallocate", "Rw", "RwRefs", "HasId", "Valid"];
+    let mut out: Vec<String> = Vec::new();
+    let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    let lines: Vec<&str> = resp.lines().collect();
+    let mut i = 0;
+    while i < lines.len() {
+        let t = lines[i].trim_start();
+        let kw = if t.starts_with("function ") {
+            Some("function ")
+        } else if t.starts_with("predicate ") {
+            Some("predicate ")
+        } else {
+            None
+        };
+        let Some(k) = kw else {
+            i += 1;
+            continue;
+        };
+        let name: String = t[k.len()..]
+            .chars()
+            .take_while(|c| c.is_alphanumeric() || *c == '_')
+            .collect();
+        if name.is_empty() || EXCLUDE.contains(&name.as_str()) || seen.contains(&name) {
+            i += 1;
+            continue;
+        }
+        // Capture from this line until the body braces balance (after the first `{`).
+        let mut decl = String::new();
+        let mut depth: i32 = 0;
+        let mut started = false;
+        let mut j = i;
+        while j < lines.len() {
+            decl.push_str(lines[j]);
+            decl.push('\n');
+            for c in lines[j].chars() {
+                if c == '{' {
+                    depth += 1;
+                    started = true;
+                } else if c == '}' {
+                    depth -= 1;
+                }
+            }
+            j += 1;
+            if started && depth <= 0 {
+                break;
+            }
+        }
+        if started && depth <= 0 {
+            seen.insert(name);
+            out.push(decl.trim_end().to_string());
+        }
+        i = j;
+    }
+    out.join("\n\n")
 }
 
 /// One Anthropic Messages call with a small retry on transient failures.
@@ -903,6 +1223,7 @@ fn calibrate(
         mutants,
         gold_ensures,
         timeout,
+        "", // the gold spec defines no helpers
     );
     if !s.valid {
         eprintln!("FAIL: {}", s.note);
@@ -1013,6 +1334,7 @@ where
                         continue;
                     }
                 };
+                let helpers = extract_spec_helpers(&resp); // M-0013: model-defined helper defs
                 extracted += 1;
                 let s = score_spec(
                     workdir,
@@ -1022,6 +1344,7 @@ where
                     ctx.mutants,
                     &ensures,
                     timeout,
+                    &helpers,
                 );
                 if !s.valid {
                     match s.validity {
@@ -1544,6 +1867,34 @@ const REALLOCATE_BATTERY: &[ExecCase] = &[
         ],
         label: "target_not_first",
     },
+    // M-0013 (AC-4) — edge cases that widen the over-claim-catching power:
+    // A single entity (the target) with no refs: isolates the rename (R) with C vacuous.
+    ExecCase {
+        args: &["[Entity(7, [])]", "7", "3"],
+        label: "single_entity_no_refs",
+    },
+    // Two entities, all refs empty: the frame (F) is active while C is vacuous — catches an
+    // over-claim about ids that a refs-bearing tree might mask.
+    ExecCase {
+        args: &["[Entity(1, []), Entity(2, [])]", "1", "5"],
+        label: "empty_refs",
+    },
+    // The target references oldId twice (a repeated cross-reference to itself): catches an
+    // over-claim that only rewrites the first occurrence of oldId in a ref sequence.
+    ExecCase {
+        args: &["[Entity(4, [4, 4])]", "4", "8"],
+        label: "self_ref_repeated",
+    },
+    // A larger tree with many distant references (incl. a repeated ref) to oldId: stresses the
+    // complete cross-reference rewrite (C) across several entities at once.
+    ExecCase {
+        args: &[
+            "[Entity(1, [3]), Entity(2, [1, 1]), Entity(3, [1]), Entity(4, [1, 3])]",
+            "1",
+            "9",
+        ],
+        label: "many_distant_refs",
+    },
 ];
 
 const REALLOCATE: StrengthSubject = StrengthSubject {
@@ -1859,6 +2210,7 @@ fn mean_entailment_rate(tally: &StrengthTally, keys: &[&str]) -> Option<f64> {
 /// closure (`goal -> Outcome`), then delegates the routing to `probe_spec_core`.
 /// Returns true when the spec entered the population (valid and resolved), false when
 /// it was excluded (`invalid` or `probe_error`) — the caller emits the audit line.
+#[allow(clippy::too_many_arguments)] // the M-0013 `helpers` is the 8th load-bearing arg
 fn probe_spec(
     workdir: &Path,
     preamble: &str,
@@ -1867,8 +2219,21 @@ fn probe_spec(
     spec_ensures: &str,
     timeout: Duration,
     tally: &mut StrengthTally,
+    helpers: &str,
 ) -> bool {
-    let validity = validate_spec(workdir, preamble, ref_impl, subject, spec_ensures, timeout);
+    // M-0013: the validity gate sees the candidate's helpers (single-source validity, C1).
+    // The strength obligation probes (`entails_outcome`) assemble against the opaque preamble
+    // only; a valid spec that depends on a model helper resolves there as a `probe_error`
+    // (surfaced) rather than entering the strength tally — the under-spec measure's residual.
+    let validity = validate_spec(
+        workdir,
+        preamble,
+        ref_impl,
+        subject,
+        spec_ensures,
+        timeout,
+        helpers,
+    );
     let assume_owned = ensures_to_requires(spec_ensures);
     let assume = assume_owned.as_str();
     probe_spec_core(subject, validity, tally, |goal| {
@@ -1972,6 +2337,7 @@ fn compute_strength(
                     Some(e) => e,
                     None => continue,
                 };
+                let helpers = extract_spec_helpers(&resp); // M-0013
                 if probe_spec(
                     workdir,
                     frags.preamble,
@@ -1980,6 +2346,7 @@ fn compute_strength(
                     &ensures,
                     timeout,
                     t,
+                    &helpers,
                 ) {
                     println!("[{mlabel}/{cond}/{trial}] strength probed");
                 } else {
@@ -3297,7 +3664,8 @@ mod tests {
             &CANONICALIZE,
             strong,
             to,
-            &mut t
+            &mut t,
+            "", // no model-defined helpers in these fixtures
         ));
         assert_eq!(t.specs, 1);
         assert_eq!(t.invalid, 0);
@@ -3320,7 +3688,8 @@ mod tests {
             &CANONICALIZE,
             bound,
             to,
-            &mut t
+            &mut t,
+            "", // no model-defined helpers in these fixtures
         ));
         assert_eq!(t.counts.get("entails_kind"), Some(&1));
         assert_eq!(t.counts.get("entails_value"), None);
@@ -3337,7 +3706,8 @@ mod tests {
             &CANONICALIZE,
             free,
             to,
-            &mut t
+            &mut t,
+            "", // no model-defined helpers in these fixtures
         ));
         assert_eq!(t.counts.get("width_free"), Some(&1));
         assert_eq!(t.counts.get("width_bound_only"), None);
@@ -3354,7 +3724,8 @@ mod tests {
             &CANONICALIZE,
             unresolved,
             to,
-            &mut t
+            &mut t,
+            "", // no model-defined helpers in these fixtures
         ));
         assert_eq!(t.specs, 0);
         assert_eq!(t.invalid, 1);
@@ -3384,7 +3755,8 @@ mod tests {
             &CANONICALIZE,
             overclaim,
             to,
-            &mut t
+            &mut t,
+            "", // no model-defined helpers in these fixtures
         ));
         assert_eq!(
             t.specs, 0,
@@ -4202,6 +4574,7 @@ mod tests {
             &subject.strength,
             &gold_ensures,
             Duration::from_secs(30),
+            "", // the gold spec defines no helpers
         );
         assert!(
             v == Validity::Provable,
@@ -4284,6 +4657,7 @@ mod tests {
             &mutants,
             &gold_ensures,
             Duration::from_secs(30),
+            "", // the gold spec defines no helpers
         );
         assert!(s.valid, "gold invalid: {}", s.note);
         let bank = subject.mutants.len();
@@ -4368,6 +4742,7 @@ mod tests {
             &subject.strength,
             over,
             Duration::from_secs(30),
+            "",
         );
         assert_eq!(
             v,
@@ -4455,7 +4830,15 @@ lemma Spec(t: Tree, oldId: Id, newId: Id)
         );
 
         // The hybrid gate accepts it via execution.
-        let v = validate_spec(&wd, &preamble, &ref_impl, &subject.strength, &ensures, to);
+        let v = validate_spec(
+            &wd,
+            &preamble,
+            &ref_impl,
+            &subject.strength,
+            &ensures,
+            to,
+            "",
+        );
         assert_eq!(
             v,
             Validity::ExecValid,
@@ -4487,6 +4870,7 @@ lemma Spec(t: Tree, oldId: Id, newId: Id)
             &subject.strength,
             ghost,
             Duration::from_secs(60),
+            "",
         );
         assert_eq!(
             v,
@@ -4589,6 +4973,39 @@ lemma Spec(t: Tree, oldId: Id, newId: Id)
         }
     }
 
+    /// AC-4 (G-0007): the enriched battery rejects genuine over-claims with NO false-valids — the
+    /// more dangerous error direction (an over-claim slipping through as valid would under-count
+    /// over-claiming and bias the verdict toward a spurious NO-GO). A suite of known over-claims —
+    /// the four mutant-violation shapes PLUS non-mutant shapes the bank does not encode — is each
+    /// caught as `ExecOverclaim`. If any passed, the battery would be too weak and this fails.
+    #[test]
+    fn reallocate_enriched_battery_rejects_overclaims() {
+        let subject = subject_by_name("reallocate").unwrap();
+        let (preamble, ref_impl, _gold) = gold_slices(subject);
+        let wd = fixture_workdir("m0013-adversarial");
+        let to = Duration::from_secs(60);
+        let overclaims: &[(&str, &str)] = &[
+            // the four mutant-violation directions
+            ("refs_unchanged", "  ensures forall i :: 0 <= i < |t| ==> Reallocate(t, oldId, newId)[i].refs == t[i].refs"),
+            ("target_keeps_oldId", "  ensures forall i :: 0 <= i < |t| && t[i].id == oldId ==> Reallocate(t, oldId, newId)[i].id == oldId"),
+            ("all_ids_to_newId", "  ensures forall i :: 0 <= i < |t| ==> Reallocate(t, oldId, newId)[i].id == newId"),
+            ("only_target_refs_rewritten", "  ensures forall i :: 0 <= i < |t| ==> Reallocate(t, oldId, newId)[i].refs == (if t[i].id == oldId then RwRefs(t[i].refs, oldId, newId) else t[i].refs)"),
+            // non-mutant shapes the bank does not encode
+            ("nothing_changes", "  ensures forall i :: 0 <= i < |t| ==> Reallocate(t, oldId, newId)[i] == t[i]"),
+            ("ids_never_change", "  ensures forall i :: 0 <= i < |t| ==> Reallocate(t, oldId, newId)[i].id == t[i].id"),
+            ("newId_never_in_refs", "  ensures forall i, k :: 0 <= i < |t| && 0 <= k < |t[i].refs| ==> Reallocate(t, oldId, newId)[i].refs[k] != newId"),
+        ];
+        for (label, over) in overclaims {
+            let v = validate_spec(&wd, &preamble, &ref_impl, &subject.strength, over, to, "");
+            assert_eq!(
+                v,
+                Validity::ExecOverclaim,
+                "over-claim `{label}` must be caught (no false-valid); got {}",
+                v.label()
+            );
+        }
+    }
+
     /// `ensures_to_conjunction` (pure, no Dafny): clauses become a parenthesized AND; a
     /// multi-line clause keeps its continuation lines NEWLINE-joined so a `// comment` cannot
     /// comment out the code that follows; an `ensures`-free block collapses to `true`.
@@ -4649,6 +5066,477 @@ lemma Spec(t: Tree, oldId: Id, newId: Id)
         // labels are distinct (no two categories collapse in the audit trail)
         let labels: std::collections::BTreeSet<_> = all.iter().map(|(_, _, l)| *l).collect();
         assert_eq!(labels.len(), all.len());
+    }
+
+    // ===== M-0013: harden the spec extractor for complex executable specs =====
+
+    /// AC-1 (G-0007): `extract_spec_ensures` terminates the `ensures` region at the lemma
+    /// boundary even when the body brace is NOT at line-start. The `opus-4.8` disinterested
+    /// smoke spec closed its lemma with a bare `}` (no `{`-led line), so the old extractor ran
+    /// past the lemma and the closing code fence into the prose — capturing unparseable text.
+    /// Extraction must stop at the `}` (or a ` ``` ` fence) and keep only the clauses.
+    #[test]
+    fn extract_spec_ensures_stops_at_bare_brace_and_fence() {
+        // lemma body closed with a bare `}` on its own line, then a fence, then prose that
+        // itself contains the word `ensures` and Dafny-looking tokens (the trap).
+        let resp = "Here is the spec:\n\n```dafny\nlemma Spec(t: Tree, oldId: Id, newId: Id)\n  \
+                    requires oldId != newId\n  ensures forall i :: 0 <= i < |t| ==> P(i)\n  && \
+                    Q\n}\n```\n\n### Why each clause is needed\n- the `ensures` above pins Z; a \
+                    looser { spec } would miss it.\n";
+        let e = extract_spec_ensures(resp).expect("ensures present");
+        assert!(e.contains("forall i"), "kept the real clause: {e}");
+        assert!(e.contains("&& Q"), "kept the continuation: {e}");
+        assert!(
+            !e.contains("Why") && !e.contains("looser") && !e.contains("pins Z"),
+            "must NOT capture the trailing prose: {e}"
+        );
+    }
+
+    /// The actual `M-0011` smoke `opus-4.8` disinterested response (G-0007): a correct, thorough
+    /// spec whose lemma closes with a bare `}` (no `{`-led line) followed by the code fence and
+    /// prose. Committed verbatim (the `runs/` source is gitignored) so the AC-1 regression is
+    /// reproducible offline.
+    const SMOKE_OPUS_DISINTERESTED_M0011: &str = "```dafny\n\
+lemma Spec(t: Tree, oldId: Id, newId: Id)\n\
+  requires oldId != newId\n\
+  requires Valid(t)\n\
+  requires HasId(t, oldId)\n\
+  requires !HasId(t, newId)\n\
+  ensures\n\
+    var t' := Reallocate(t, oldId, newId);\n\
+    // Structure is preserved: same number of entities, in the same order.\n\
+    && |t'| == |t|\n\
+    && (forall i :: 0 <= i < |t'| ==>\n\
+          t'[i].id == Rw(t[i].id, oldId, newId) &&\n\
+          t'[i].refs == RwRefs(t[i].refs, oldId, newId))\n\
+\n\
+    // No orphan: oldId appears nowhere — neither as an id nor as a reference.\n\
+    && !HasId(t', oldId)\n\
+    && (forall i :: 0 <= i < |t'| ==> oldId !in t'[i].refs)\n\
+\n\
+    // The rename happened: newId is now present as an id.\n\
+    && HasId(t', newId)\n\
+\n\
+    // Uniqueness: ids remain unique.\n\
+    && Valid(t')\n\
+\n\
+    // Complete rewrite of cross-references, in BOTH directions, per entity.\n\
+    && (forall i, k :: 0 <= i < |t'| && 0 <= k < |t'[i].refs| ==>\n\
+          t'[i].refs[k] == Rw(t[i].refs[k], oldId, newId))\n\
+    && (forall i, k :: 0 <= i < |t| && 0 <= k < |t[i].refs| ==>\n\
+          (t[i].refs[k] == oldId ==> t'[i].refs[k] == newId) &&\n\
+          (t[i].refs[k] != oldId ==> t'[i].refs[k] == t[i].refs[k]))\n\
+\n\
+    // The rewrite touches exactly oldId among ids: every other id is preserved.\n\
+    && (forall i :: 0 <= i < |t| ==>\n\
+          (t[i].id == oldId ==> t'[i].id == newId) &&\n\
+          (t[i].id != oldId ==> t'[i].id == t[i].id))\n\
+}\n\
+```\n\
+\n\
+### Why each clause is needed\n\
+The `ensures` above pins the complete rewrite; a looser { spec } would miss it.\n";
+
+    /// AC-1 end-to-end: with the extraction fix, the opus disinterested spec extracts ONLY its
+    /// clauses (no prose), so the assembled program is parseable and the spec is VALID — it was
+    /// `Unexecutable` before, because the overrun captured the fence + prose. (It happens to be
+    /// `Provable` once parseable — the clean clauses auto-verify; the claim is "valid, not the
+    /// automation-artifact `Unexecutable`", whichever path decides it.)
+    #[test]
+    fn smoke_opus_disinterested_m0011_validates_after_extraction_fix() {
+        let subject = subject_by_name("reallocate").unwrap();
+        let (preamble, ref_impl, _gold) = gold_slices(subject);
+        let ensures =
+            extract_spec_ensures(SMOKE_OPUS_DISINTERESTED_M0011).expect("ensures present");
+        assert!(
+            !ensures.contains("Why each clause") && !ensures.contains("looser"),
+            "extraction must stop at the lemma `}}`: {ensures}"
+        );
+        let wd = fixture_workdir("m0013-opus");
+        let v = validate_spec(
+            &wd,
+            &preamble,
+            &ref_impl,
+            &subject.strength,
+            &ensures,
+            Duration::from_secs(60),
+            "",
+        );
+        assert!(
+            v.is_valid(),
+            "opus disinterested must be valid after the extraction fix (got {})",
+            v.label()
+        );
+        assert_ne!(
+            v,
+            Validity::Unexecutable,
+            "must not be the G-0007 Unexecutable artifact"
+        );
+    }
+
+    /// AC-2 (G-0007): `extract_spec_helpers` captures model-defined helpers, excludes the
+    /// reference `Reallocate`, and de-duplicates a helper a revised response defines twice —
+    /// including a recursive helper (`IndexOfId`, the `haiku-4.5` shape), whose brace-matched
+    /// body the capture must span. Pure; no Dafny.
+    #[test]
+    fn extract_spec_helpers_captures_excludes_reallocate_and_dedups() {
+        let resp = "```dafny\n\
+function Reallocate(t: Tree, o: Id, n: Id): Tree { t }\n\
+function IndexOfId(t: Tree, id: Id): int\n\
+  requires HasId(t, id)\n\
+{\n\
+  if t[0].id == id then 0 else IndexOfId(t[1..], id) + 1\n\
+}\n\
+lemma Spec(t: Tree, o: Id, n: Id) ensures true { }\n\
+```\n\
+Revised:\n\
+```dafny\n\
+function IndexOfId(t: Tree, id: Id): int requires HasId(t, id) { 0 }\n\
+```\n";
+        let h = extract_spec_helpers(resp);
+        assert!(h.contains("function IndexOfId"), "captured the helper: {h}");
+        assert!(
+            h.contains("else IndexOfId(t[1..], id) + 1"),
+            "spanned the recursive brace-matched body: {h}"
+        );
+        assert!(
+            !h.contains("function Reallocate"),
+            "excluded the reference Reallocate: {h}"
+        );
+        assert_eq!(
+            h.matches("function IndexOfId").count(),
+            1,
+            "de-duplicated the twice-defined helper: {h}"
+        );
+    }
+
+    /// The actual `M-0011` re-smoke `opus-4.8` incentivized response (G-0007): a correct spec
+    /// that defines `RwEntity` and calls it in an `ensures`. Committed verbatim.
+    const SMOKE_OPUS_INCENTIVIZED_M0011: &str = "```dafny\n\
+// Rewrite a single entity.\n\
+function RwEntity(e: Entity, oldId: Id, newId: Id): Entity {\n\
+  Entity(Rw(e.id, oldId, newId), RwRefs(e.refs, oldId, newId))\n\
+}\n\
+\n\
+function Reallocate(t: Tree, oldId: Id, newId: Id): Tree {\n\
+  seq(|t|, i requires 0 <= i < |t| => RwEntity(t[i], oldId, newId))\n\
+}\n\
+\n\
+lemma Spec(t: Tree, oldId: Id, newId: Id)\n\
+  requires oldId != newId\n\
+  requires Valid(t)\n\
+  requires HasId(t, oldId)\n\
+  requires !HasId(t, newId)\n\
+  ensures |Reallocate(t, oldId, newId)| == |t|\n\
+  ensures !HasId(Reallocate(t, oldId, newId), oldId)\n\
+  ensures Valid(Reallocate(t, oldId, newId))\n\
+  ensures HasId(Reallocate(t, oldId, newId), newId)\n\
+  ensures forall i :: 0 <= i < |t| ==>\n\
+            Reallocate(t, oldId, newId)[i] == RwEntity(t[i], oldId, newId)\n\
+  ensures forall i :: 0 <= i < |t| ==>\n\
+            Reallocate(t, oldId, newId)[i].id == Rw(t[i].id, oldId, newId)\n\
+  ensures forall i, k :: 0 <= i < |t| && 0 <= k < |t[i].refs| ==>\n\
+            Reallocate(t, oldId, newId)[i].refs[k] == Rw(t[i].refs[k], oldId, newId)\n\
+{\n\
+}\n\
+```\n";
+
+    /// AC-2 end-to-end: the opus incentivized spec calls `RwEntity`. WITHOUT helper capture it is
+    /// `Unexecutable` (the helper is undefined in the assembled program — the G-0007 residual);
+    /// WITH capture it is valid. Proves capture is load-bearing and the verdict flips correctly.
+    #[test]
+    fn smoke_opus_incentivized_m0011_validates_via_helper_capture() {
+        let subject = subject_by_name("reallocate").unwrap();
+        let (preamble, ref_impl, _gold) = gold_slices(subject);
+        let ensures = extract_spec_ensures(SMOKE_OPUS_INCENTIVIZED_M0011).expect("ensures present");
+        let helpers = extract_spec_helpers(SMOKE_OPUS_INCENTIVIZED_M0011);
+        assert!(
+            helpers.contains("function RwEntity"),
+            "RwEntity captured: {helpers}"
+        );
+        assert!(
+            !helpers.contains("function Reallocate"),
+            "model Reallocate excluded (the harness uses its own): {helpers}"
+        );
+        let wd = fixture_workdir("m0013-opus-helper");
+        let to = Duration::from_secs(60);
+        // Without the helper, the assembled program cannot resolve RwEntity → Unexecutable.
+        let v_no = validate_spec(
+            &wd,
+            &preamble,
+            &ref_impl,
+            &subject.strength,
+            &ensures,
+            to,
+            "",
+        );
+        assert_eq!(
+            v_no,
+            Validity::Unexecutable,
+            "without helper capture the spec is Unexecutable (got {})",
+            v_no.label()
+        );
+        // With the helper captured, the spec is valid.
+        let v = validate_spec(
+            &wd,
+            &preamble,
+            &ref_impl,
+            &subject.strength,
+            &ensures,
+            to,
+            &helpers,
+        );
+        assert!(
+            v.is_valid(),
+            "with helper capture the spec is valid (got {})",
+            v.label()
+        );
+    }
+
+    /// AC-3 (G-0007): the guarded-quantifier rewrite is sound on the recognized shape and bails
+    /// (leaving the text byte-for-byte unchanged) on everything else — so it can never make an
+    /// over-claim validate. Pure; no Dafny.
+    #[test]
+    fn rewrite_guarded_id_quantifiers_is_sound_and_conservative() {
+        // guarded single-var forall → bounded `var`-let rewrite over the tree's positions
+        let r = rewrite_guarded_id_quantifiers(
+            "(forall x :: x != oldId && HasId(t, x) ==> HasId(tp, x))",
+        );
+        assert!(
+            r.contains("forall q_0 :: 0 <= q_0 < |t|"),
+            "bounded over |t|: {r}"
+        );
+        assert!(
+            r.contains("var x := t[q_0].id"),
+            "binds x to a present id: {r}"
+        );
+        assert!(
+            r.contains("(x != oldId) ==> HasId(tp, x)"),
+            "keeps guard+body: {r}"
+        );
+        assert!(!r.contains("HasId(t, x)"), "removed the HasId bound: {r}");
+
+        // a guard that is JUST HasId → the let-body is the bare body (no `==>` wrapper)
+        let r2 = rewrite_guarded_id_quantifiers("(forall y :: HasId(tp, y) ==> y == 0)");
+        assert!(
+            r2.contains("var y := tp[q_0].id; y == 0"),
+            "bare-body form: {r2}"
+        );
+
+        // BAIL — unchanged byte-for-byte (stays Unexecutable, never a wrong rewrite):
+        for unchanged in [
+            "(forall i, k :: 0 <= i < |t| ==> P(i, k))", // multi-variable
+            "(forall x :: x > newId)",                   // genuinely unbounded — no HasId to bound
+            "(forall i :: 0 <= i < |t| ==> Q(i))",       // already bounded, no HasId
+            // the fresh index `q_0` already occurs in the body (an enclosing binder) → bail, so the
+            // new `forall q_0` cannot SHADOW it and silently change the formula (soundness guard).
+            "(forall x :: HasId(t, x) ==> x == t[q_0].id)",
+        ] {
+            assert_eq!(
+                rewrite_guarded_id_quantifiers(unchanged),
+                unchanged,
+                "must bail unchanged"
+            );
+        }
+    }
+
+    /// AC-3/AC-4 soundness regression (adversarial review): the guarded-quantifier rewrite must not
+    /// CAPTURE a same-named enclosing binder and turn an over-claim into a valid. The over-claim
+    /// "every id in the tree equals every other" (`forall x :: HasId(t,x) ==> x == t[q_0].id`, under
+    /// an enclosing `forall q_0`) is false on any multi-id battery tree; the fresh index would be
+    /// `q_0`, so the rewrite must bail (leaving it Unexecutable), never `ExecValid`.
+    #[test]
+    fn guarded_rewrite_does_not_capture_a_same_named_binder() {
+        let subject = subject_by_name("reallocate").unwrap();
+        let (preamble, ref_impl, _gold) = gold_slices(subject);
+        let wd = fixture_workdir("m0013-capture");
+        let over = "  ensures forall q_0 :: 0 <= q_0 < |t| ==> (forall x :: HasId(t, x) ==> x == t[q_0].id)";
+        let v = validate_spec(
+            &wd,
+            &preamble,
+            &ref_impl,
+            &subject.strength,
+            over,
+            Duration::from_secs(60),
+            "",
+        );
+        assert!(
+            !v.is_valid(),
+            "a variable-capturing over-claim must NOT validate (got {})",
+            v.label()
+        );
+    }
+
+    /// The actual `M-0011` smoke `sonnet-4.6` disinterested response (G-0007): a correct spec whose
+    /// clauses 8–9 quantify `forall x :: … HasId(t, x) …` over all ids. Committed verbatim.
+    const SMOKE_SONNET_DISINTERESTED_M0011: &str = "```dafny\n\
+lemma Spec(t: Tree, oldId: Id, newId: Id)\n\
+  requires oldId != newId\n\
+  requires Valid(t)\n\
+  requires HasId(t, oldId)\n\
+  requires !HasId(t, newId)\n\
+  ensures var t' := Reallocate(t, oldId, newId);\n\
+    |t'| == |t|\n\
+    && Valid(t')\n\
+    && !HasId(t', oldId)\n\
+    && HasId(t', newId)\n\
+    && (forall i, j ::\n\
+          0 <= i < |t'| && 0 <= j < |t'[i].refs| ==>\n\
+          t'[i].refs[j] != oldId)\n\
+    && (forall i :: 0 <= i < |t| ==>\n\
+          t'[i].refs == RwRefs(t[i].refs, oldId, newId))\n\
+    && (forall i :: 0 <= i < |t| ==>\n\
+          t'[i].id == Rw(t[i].id, oldId, newId))\n\
+    && (forall x :: x != oldId && HasId(t, x) ==> HasId(t', x))\n\
+    && (forall x :: HasId(t', x) ==> x == newId || (x != oldId && HasId(t, x)))\n\
+{ }\n\
+```\n";
+
+    /// AC-3 end-to-end: the sonnet disinterested spec (unbounded guarded id-quantifiers) was
+    /// `Unexecutable` before; with the rewrite it validates via execution. The empty-body verifier
+    /// rejects it (so the execution path, where the rewrite lives, is exercised).
+    #[test]
+    fn smoke_sonnet_disinterested_m0011_validates_via_quantifier_rewrite() {
+        let subject = subject_by_name("reallocate").unwrap();
+        let (preamble, ref_impl, _gold) = gold_slices(subject);
+        let ensures =
+            extract_spec_ensures(SMOKE_SONNET_DISINTERESTED_M0011).expect("ensures present");
+        // the spec really does contain unbounded guarded id-quantifiers
+        assert!(ensures.contains("forall x :: x != oldId && HasId(t, x)"));
+        let wd = fixture_workdir("m0013-sonnet");
+        let v = validate_spec(
+            &wd,
+            &preamble,
+            &ref_impl,
+            &subject.strength,
+            &ensures,
+            Duration::from_secs(60),
+            "",
+        );
+        assert!(
+            v.is_valid(),
+            "sonnet disinterested must validate via the quantifier rewrite (got {})",
+            v.label()
+        );
+        assert_ne!(
+            v,
+            Validity::Unexecutable,
+            "must not be the G-0007 Unexecutable artifact"
+        );
+    }
+
+    /// AC-3 (G-0007): the `<==>`-precedence normalization wraps an implication consequent that
+    /// contains a top-level iff (recovering the intended grouping) and is conservative everywhere
+    /// else. Pure; no Dafny.
+    #[test]
+    fn normalize_iff_precedence_wraps_consequent_conservatively() {
+        // implication consequent with a top-level <==> → wrapped
+        assert_eq!(
+            normalize_iff_precedence("(forall i :: 0 <= i < |t| ==> A(i) <==> B(i))"),
+            "(forall i :: 0 <= i < |t| ==> (A(i) <==> B(i)))"
+        );
+        // multi-variable forall (the bug is not var-count specific) → wrapped
+        assert_eq!(
+            normalize_iff_precedence("(forall i, k :: 0 <= i < |t| ==> P(i, k) <==> Q(i, k))"),
+            "(forall i, k :: 0 <= i < |t| ==> (P(i, k) <==> Q(i, k)))"
+        );
+        // no <==> in the consequent → unchanged; already-parenthesized iff → unchanged (idempotent)
+        for unchanged in [
+            "(forall i :: 0 <= i < |t| ==> A(i) && B(i))",
+            "(forall i :: 0 <= i < |t| ==> (A(i) <==> B(i)))",
+        ] {
+            assert_eq!(normalize_iff_precedence(unchanged), unchanged);
+        }
+    }
+
+    /// The actual `M-0011` calibration `opus-4.8` disinterested response (G-0007): a correct,
+    /// thorough spec with the `<==>`-precedence footgun (`==> t'[i].id == newId <==> (…)`).
+    /// Committed verbatim.
+    const SMOKE_OPUS_IFF_M0011: &str = "```dafny\n\
+lemma Spec(t: Tree, oldId: Id, newId: Id)\n\
+  requires oldId != newId\n\
+  requires Valid(t)\n\
+  requires HasId(t, oldId)\n\
+  requires !HasId(t, newId)\n\
+  ensures\n\
+    var t' := Reallocate(t, oldId, newId);\n\
+    && |t'| == |t|\n\
+    && (forall i :: 0 <= i < |t'| ==>\n\
+          t'[i].id == Rw(t[i].id, oldId, newId)\n\
+          && t'[i].refs == RwRefs(t[i].refs, oldId, newId))\n\
+    && (forall i :: 0 <= i < |t'| ==> t'[i].id != oldId)\n\
+    && (forall i, k :: 0 <= i < |t'| && 0 <= k < |t'[i].refs| ==> t'[i].refs[k] != oldId)\n\
+    && !HasId(t', oldId)\n\
+    && Valid(t')\n\
+    && HasId(t', newId)\n\
+    && (forall i :: 0 <= i < |t| ==>\n\
+          t'[i].id == newId <==> (t[i].id == oldId || t[i].id == newId))\n\
+    && (forall i :: 0 <= i < |t| ==>\n\
+          (t[i].id == oldId ==> t'[i].id == newId)\n\
+          && (t[i].id != oldId ==> t'[i].id == t[i].id))\n\
+    && (forall i, k :: 0 <= i < |t| && 0 <= k < |t[i].refs| ==>\n\
+          (t[i].refs[k] == oldId ==> t'[i].refs[k] == newId)\n\
+          && (t[i].refs[k] != oldId ==> t'[i].refs[k] == t[i].refs[k]))\n\
+{ }\n\
+```\n";
+
+    /// AC-3 end-to-end: the opus disinterested spec with the `<==>` footgun was `Unexecutable`
+    /// (Dafny could not bound the quantifier once `<==>` mangled the grouping); with the
+    /// normalization it validates via execution.
+    #[test]
+    fn smoke_opus_iff_m0011_validates_via_normalization() {
+        let subject = subject_by_name("reallocate").unwrap();
+        let (preamble, ref_impl, _gold) = gold_slices(subject);
+        let ensures = extract_spec_ensures(SMOKE_OPUS_IFF_M0011).expect("ensures present");
+        assert!(ensures.contains("== newId <==> "), "the footgun is present");
+        let wd = fixture_workdir("m0013-iff");
+        let v = validate_spec(
+            &wd,
+            &preamble,
+            &ref_impl,
+            &subject.strength,
+            &ensures,
+            Duration::from_secs(60),
+            "",
+        );
+        assert!(
+            v.is_valid(),
+            "opus <==> spec must validate via the normalization (got {})",
+            v.label()
+        );
+        assert_ne!(
+            v,
+            Validity::Unexecutable,
+            "must not be the G-0007 Unexecutable artifact"
+        );
+    }
+
+    /// AC-4 soundness: the `<==>` normalization recovers the intended grouping but must NOT mask an
+    /// over-claim. A spec whose intended iff is FALSE of the reference impl (`result.id == oldId`
+    /// iff the entity *was* oldId — false for the renamed target) is still caught as ExecOverclaim
+    /// after normalization. (An UNwrapped `<==>` forall the normalization does not reach stays the
+    /// safe `Unexecutable` — never a false-valid either way.)
+    #[test]
+    fn iff_normalization_does_not_mask_an_overclaim() {
+        let subject = subject_by_name("reallocate").unwrap();
+        let (preamble, ref_impl, _gold) = gold_slices(subject);
+        let wd = fixture_workdir("m0013-iff-overclaim");
+        let over = "  ensures (forall i :: 0 <= i < |t| ==> Reallocate(t, oldId, newId)[i].id == oldId <==> t[i].id == oldId)";
+        let v = validate_spec(
+            &wd,
+            &preamble,
+            &ref_impl,
+            &subject.strength,
+            over,
+            Duration::from_secs(60),
+            "",
+        );
+        assert_eq!(
+            v,
+            Validity::ExecOverclaim,
+            "a <==>-typo over-claim must still be caught (no false-valid); got {}",
+            v.label()
+        );
     }
 
     // ===== M-0007: the combination rule is total and matches the pre-registration =====
@@ -4750,6 +5638,7 @@ lemma Spec(t: Tree, oldId: Id, newId: Id)
                 &mutants,
                 &gold_ensures,
                 timeout,
+                "",
             );
             let bank = subject.mutants.len();
             assert!(s.valid, "{}: gold spec invalid: {}", subject.name, s.note);
