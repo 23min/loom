@@ -144,18 +144,34 @@ resolution path — none blocks the hardening:
 ## Milestones
 
 Sequenced via `aiwfx-plan-milestones`; success references *every milestone listed
-here*, not a fixed count. Only the foundational milestone is allocated so far —
-the later three are planned once their open questions resolve:
+here*, not a fixed count. The foundation, subject-design, and pre-registration
+milestones are allocated; the run is planned once the prereg is authored:
 
 - [`M-0008`](M-0008-harden-the-loom-ultralight-harness.md) — **Harden the
   harness**: close `G-0004` + `G-0005`, plumb the over-claim rate, re-baseline the
   canonicalize golden (verdict-invariant). The foundation; lands first. *(no
   dependencies)*
-- **Design the harder subject** *(not yet allocated)* — gold spec, mutant bank,
-  obligation set, and calibration for the chosen invariant.
-- **Author the two-dimension pre-registration** *(not yet allocated)* — both
-  failure modes, their thresholds, and the combination rule, committed before any
-  run.
-- **Run and decide** *(not yet allocated)* — execute the two-arm run, record the
-  verdict, apply the combination rule, and record the terminal decision
-  discharging this epic.
+- [`M-0009`](M-0009-design-the-id-reallocation-subject.md) — **Design the
+  id-reallocation subject**: gold `.dfy` (the complete pin `{R, F, C}`),
+  clause-isolated mutant bank, the reference-rewrite tell, and `--calibrate`
+  calibration of the reallocation invariant. *(depends on `M-0008`)*
+- [`M-0010`](M-0010-author-the-two-dimension-pre-registration.md) — **Author the
+  two-dimension pre-registration**: score both failure modes (under-specification +
+  over-claiming), fix each threshold and the combination rule, committed before any
+  run (prereg SHA an ancestor of the run). *(depends on `M-0009`)*
+- [`M-0012`](M-0012-harden-the-validity-gate-for-executable-spec-subjects.md) — **Harden
+  the validity gate**: replace empty-body `dafny verify` with a hybrid that falls back to
+  concrete-tree execution (per `D-0003`), so correct-but-not-auto-provable specs count as
+  valid and only genuine over-claims are rejected. Closes `G-0006` (surfaced by `M-0011`'s
+  smoke test); re-calibrates `M-0009`. A pre-run instrument fix; the §6 prereg is untouched.
+  *(depends on `M-0010`)*
+- [`M-0013`](M-0013-harden-the-spec-extractor-for-complex-executable-specs.md) — **Harden
+  the spec extractor**: close `G-0007` (surfaced by `M-0011`'s smoke) — terminate `ensures`
+  extraction at the lemma boundary, capture model-defined helpers, and rewrite guarded
+  id-quantifiers to bounded iteration, so the over-claim gate measures correct *thorough*
+  specs as valid. A second pre-run instrument fix; the §6 prereg is untouched.
+  *(depends on `M-0010`, `M-0012`)*
+- [`M-0011`](M-0011-run-the-reallocate-sweep-and-record-the-terminal-decision.md) —
+  **Run and decide**: execute the two-arm `reallocate` sweep (three models × two arms ×
+  N = 30), apply the frozen `reallocate_verdict`, and record the terminal decision as a
+  decision entity discharging the epic. *(depends on `M-0010`, `M-0012`, `M-0013`)*
