@@ -12,7 +12,7 @@ acs:
     - id: AC-1
       title: The two-arm reallocate sweep is executed and the scored artifacts are recorded
       status: open
-      tdd_phase: green
+      tdd_phase: done
     - id: AC-2
       title: The prereg-ancestry guard passes for the run commit
       status: open
