@@ -20,6 +20,10 @@ acs:
       title: Guarded id-quantifiers execute via a bounded rewrite
       status: open
       tdd_phase: red
+    - id: AC-4
+      title: Enriched battery rejects over-claims with no false-valids
+      status: open
+      tdd_phase: red
 ---
 ## Goal
 
@@ -112,3 +116,6 @@ to accept-and-surface the residual, with the fixture pinned as the documented bo
 - Depends on `M-0010` (the instrument + frozen §6) and `M-0012` (the hybrid gate it extends).
 - Addresses `G-0007`. **Blocks `M-0011`'s recorded run** — the run resumes once the instrument
   measures correct complex specs.
+
+### AC-4 — Enriched battery rejects over-claims with no false-valids
+
