@@ -1,7 +1,7 @@
 ---
 id: M-0013
 title: Harden the spec extractor for complex executable specs
-status: draft
+status: in_progress
 parent: E-0003
 depends_on:
     - M-0010
