@@ -16,7 +16,7 @@ acs:
     - id: AC-2
       title: The prereg-ancestry guard passes for the run commit
       status: open
-      tdd_phase: red
+      tdd_phase: green
     - id: AC-3
       title: The terminal decision is recorded as a decision entity, re-derivable offline
       status: open
