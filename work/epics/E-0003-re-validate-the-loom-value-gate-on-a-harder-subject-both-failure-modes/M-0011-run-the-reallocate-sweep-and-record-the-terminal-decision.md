@@ -1,7 +1,7 @@
 ---
 id: M-0011
 title: Run the reallocate sweep and record the terminal decision
-status: in_progress
+status: done
 parent: E-0003
 depends_on:
     - M-0010
@@ -11,16 +11,16 @@ tdd: required
 acs:
     - id: AC-1
       title: The two-arm reallocate sweep is executed and the scored artifacts are recorded
-      status: open
-      tdd_phase: red
+      status: met
+      tdd_phase: done
     - id: AC-2
       title: The prereg-ancestry guard passes for the run commit
-      status: open
-      tdd_phase: red
+      status: met
+      tdd_phase: done
     - id: AC-3
       title: The terminal decision is recorded as a decision entity, re-derivable offline
-      status: open
-      tdd_phase: red
+      status: met
+      tdd_phase: done
 ---
 ## Goal
 
@@ -38,6 +38,13 @@ the live Anthropic API. It wires the `M-0010` scorers (until now `#[allow(dead_c
 the production decide path and applies them to the run, then records the terminal decision
 the epic's success criteria call for. Nothing downstream of the decision is in scope — a
 PROCEED would justify building loom-light, a separate epic.
+
+The first smoke on the `M-0012` sound gate surfaced `G-0007` (correct, complex disinterested
+specs marked `unexecutable` by the instrument, not by the model) — a construct-validity flaw
+that would have manufactured a confounded over-claim signal. The run was held while `M-0013`
+certified the instrument (extraction terminator, helper capture, guarded-quantifier rewrite,
+`<==>`-precedence normalization, enriched battery, freshness guard; error bound recorded in
+`D-0004`). The recorded run below is on that certified gate.
 
 ## Acceptance criteria
 
@@ -126,5 +133,81 @@ zero-extracted arm.
 
 - Depends on `M-0010` (the frozen two-dimension procedure + the committed, ancestry-guarded
   prereg), `M-0009` (the calibrated instrument), and `M-0008` (the self-contained census the
-  scorers read).
+  scorers read). Resumed on the `M-0012` sound gate as certified by `M-0013` (the run was held
+  for `G-0007` / `D-0004`).
 - **Terminal milestone of E-0003** — its recorded decision entity discharges the epic.
+
+## Work log
+
+The wiring landed before the run; the run resumed once `M-0013` certified the instrument.
+The §6 procedure / thresholds / prereg (`bb1d220`) were untouched throughout.
+
+### AC-1 — Two-arm sweep executed, artifacts recorded
+
+The certified-gate run produced `runs/reallocate/1782641702/` (gitignored; pinned by the run
+commit and quoted in `D-0005`) with `results.json` + `strength.json` for all three models ×
+two arms at **N = 30** — 30 saved generations per arm, 180 total. `results.json` records
+`trials = 30` and `extracted = 30` for every row; the census is validated on read (B2,
+`valid ≤ extracted ≤ trials`). · run commit `595d3dd`
+
+### AC-2 — Prereg-ancestry guard passes for the run commit
+
+`loom-ultralight --check-prereg-ancestry 595d3dd` → **exit 0**: all four pre-registrations
+(`prereg-fsm`, `prereg-prosey`, `prereg-combination`, and `prereg-reallocate` at `bb1d220`)
+are git-ancestors of the run commit. · wiring `2f00d7f`
+
+### AC-3 — Terminal decision recorded, re-derivable offline
+
+`reallocate_verdict` wired into the decide path (the `M-0010` scorers/types lose
+`#[allow(dead_code)]`); a self-contained `verdict.json` was emitted (per-model
+`over_claim_rate`, `tell_gap`, `easy_gap`, `inc`, thresholds, and the primary-anchored
+`terminal`), and the terminal go/no-go was recorded as decision **`D-0005`** (accepted),
+re-derivable offline from the recorded census + strength with no API call. · wiring `2f00d7f`,
+decision `D-0005`
+
+## Decisions made during implementation
+
+- **`D-0005`** (accepted) — the terminal **NO-GO**. The frozen `reallocate_verdict` over the
+  recorded N=30 × three-model × two-arm sweep returns terminal = NO-GO, anchored on the primary
+  `opus-4.8`, on which **both** failure modes are not-reproduced (`tell_gap = 0.0`,
+  `over_claim_gap = 0.0`, both arms 30/30 valid, 0 unexecutable, `inc = 0.0`). Mechanically
+  derived; no residual judgment after results were visible; re-derivable offline.
+- The construct-validity detour that preceded the run (`G-0007` → the hybrid gate `D-0003` and
+  the certification `D-0004`) was carried by `M-0012` / `M-0013`, not folded into this
+  milestone; `M-0011` resumed on the certified gate.
+
+## Validation
+
+- **Recorded run** `runs/reallocate/1782641702/` — 30 generations/arm × six arms (180), all
+  `extracted = 30`. `results.json`: opus 30/30 valid both arms; sonnet 30/27; haiku 21/26 (the
+  surfaced sweep-model residual). `verdict.json`: terminal **NO-GO**, `primary_model` opus-4.8.
+- `loom-ultralight --check-prereg-ancestry 595d3dd` → exit 0 (all four preregs precede the run).
+- `cargo test`: **69 passed; 0 failed; 4 ignored**. `clippy -D warnings` + `fmt --check` clean.
+- The wired decide path and the offline re-derivation are pinned by
+  `reallocate_verdict_matches_preregistered_map`, `reallocate_terminal_anchors_on_primary_model`,
+  `emit_reallocate_verdict_writes_multimodel_verdict_json`,
+  `combine_dimensions_matches_preregistered_truth_table`, and
+  `verdict_inputs_json_is_self_contained` — deterministic (G1), no API.
+
+## Deferrals
+
+None. The over-claim instrument residual is accepted and surfaced per `D-0004`, not deferred;
+the evidence-only sweep-model residual (haiku-4.5 disinterested `unexecutable`) is surfaced
+per-arm in `results.json` (`unexecutable` / `inconclusive`), never folded into a result.
+
+## Reviewer notes
+
+- **The NO-GO is sound, not an instrument artifact** — this is what `M-0013` / `D-0004` bought.
+  On the primary `opus-4.8` the over-claim instrument had a **0% unexecutable residual in this
+  run** (30/30 valid, both arms), so `over_claim_rate = 0.0` is a genuine "the reference impl
+  satisfies these specs," not the gate failing to decide. Before the certification, the opus
+  disinterested arm carried a spurious ~20% over-claim from the `<==>`-precedence artifact
+  (`G-0007`), which would have confounded the comparison.
+- **Sweep models are evidence-only**, pre-registered as generalization, not gating; both return
+  NO-GO. `sonnet-4.6` shows an incentivized `easy_rate` dip (`tell_gap 0.29`) but it is *not
+  localized* on the load-bearing tell and over-claiming is not-reproduced; `haiku-4.5` carries
+  the genuine-undecidable residual `D-0004` bounds (8 disinterested `unexecutable`) — a visible
+  per-arm-census signal, surfaced not silently folded, and NO-GO regardless.
+- **Integrity.** One recorded run; N = 30 fixed before it (no optional stopping); no
+  subject-shopping; `bb1d220` is a git-ancestor of the run commit (`--check-prereg-ancestry`
+  exit 0). The §6 procedure / thresholds / prereg were untouched after `bb1d220`.
