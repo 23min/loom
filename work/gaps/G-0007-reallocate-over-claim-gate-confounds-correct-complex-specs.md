@@ -1,8 +1,10 @@
 ---
 id: G-0007
 title: reallocate over-claim gate confounds correct complex specs
-status: open
+status: addressed
 discovered_in: M-0011
+addressed_by:
+    - M-0013
 ---
 ## What's missing
 
