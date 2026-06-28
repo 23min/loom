@@ -26,7 +26,7 @@ acs:
       tdd_phase: done
     - id: AC-5
       title: Calibration bounds the residual and confirms no arm bias
-      status: open
+      status: met
       tdd_phase: done
 ---
 ## Goal
