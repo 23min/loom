@@ -24,6 +24,10 @@ acs:
       title: Enriched battery rejects over-claims with no false-valids
       status: open
       tdd_phase: red
+    - id: AC-5
+      title: Calibration bounds the residual and confirms no arm bias
+      status: open
+      tdd_phase: red
 ---
 ## Goal
 
@@ -118,4 +122,6 @@ to accept-and-surface the residual, with the fixture pinned as the documented bo
   measures correct complex specs.
 
 ### AC-4 — Enriched battery rejects over-claims with no false-valids
+
+### AC-5 — Calibration bounds the residual and confirms no arm bias
 
