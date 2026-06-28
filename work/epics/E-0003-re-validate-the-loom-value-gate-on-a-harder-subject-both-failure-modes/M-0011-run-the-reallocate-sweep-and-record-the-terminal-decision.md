@@ -20,7 +20,7 @@ acs:
     - id: AC-3
       title: The terminal decision is recorded as a decision entity, re-derivable offline
       status: open
-      tdd_phase: red
+      tdd_phase: green
 ---
 ## Goal
 
