@@ -165,7 +165,13 @@ milestones are allocated; the run is planned once the prereg is authored:
   valid and only genuine over-claims are rejected. Closes `G-0006` (surfaced by `M-0011`'s
   smoke test); re-calibrates `M-0009`. A pre-run instrument fix; the §6 prereg is untouched.
   *(depends on `M-0010`)*
+- [`M-0013`](M-0013-harden-the-spec-extractor-for-complex-executable-specs.md) — **Harden
+  the spec extractor**: close `G-0007` (surfaced by `M-0011`'s smoke) — terminate `ensures`
+  extraction at the lemma boundary, capture model-defined helpers, and rewrite guarded
+  id-quantifiers to bounded iteration, so the over-claim gate measures correct *thorough*
+  specs as valid. A second pre-run instrument fix; the §6 prereg is untouched.
+  *(depends on `M-0010`, `M-0012`)*
 - [`M-0011`](M-0011-run-the-reallocate-sweep-and-record-the-terminal-decision.md) —
   **Run and decide**: execute the two-arm `reallocate` sweep (three models × two arms ×
   N = 30), apply the frozen `reallocate_verdict`, and record the terminal decision as a
-  decision entity discharging the epic. *(depends on `M-0010`, `M-0012`)*
+  decision entity discharging the epic. *(depends on `M-0010`, `M-0012`, `M-0013`)*
