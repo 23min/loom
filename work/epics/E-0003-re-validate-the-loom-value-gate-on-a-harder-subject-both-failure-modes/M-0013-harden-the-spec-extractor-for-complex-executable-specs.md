@@ -18,7 +18,7 @@ acs:
       tdd_phase: done
     - id: AC-3
       title: Guarded id-quantifiers execute via a bounded rewrite
-      status: open
+      status: met
       tdd_phase: done
     - id: AC-4
       title: Enriched battery rejects over-claims with no false-valids
