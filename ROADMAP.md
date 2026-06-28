@@ -66,5 +66,7 @@ non-formal author can drive loom's *whole* umbrella loop on **real** aiwf code: 
 examples in, an LLM-authored formal section, a verifier and a gap report out. Decide from
 observation whether to build the thin loom-light tool.
 
-_No milestones yet._
+| Milestone | Title | Status |
+|---|---|---|
+| M-0014 | Turn the umbrella loop on the status-transition FSM | draft |
 
