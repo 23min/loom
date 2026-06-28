@@ -432,11 +432,12 @@ fn rewrite_one_forall(inner: &str, n: usize) -> Option<String> {
 /// the EXECUTION path (the verifier reasons about the original form); conservative — it only
 /// rewrites a paren-wrapped, single-variable `(forall x :: … HasId(tree, x) …)` and leaves
 /// everything else byte-for-byte unchanged, so it can never make an over-claim validate.
-fn rewrite_guarded_id_quantifiers(spec_ensures: &str) -> String {
+/// Apply `f` to the INSIDE of each top-level `(forall …)` group; `Some` replaces the group
+/// (re-wrapped in parens), `None` leaves it byte-for-byte unchanged. Byte scanning is safe — a
+/// `(`/`)` byte never occurs inside a UTF-8 multibyte sequence.
+fn map_paren_foralls(s: &str, mut f: impl FnMut(&str) -> Option<String>) -> String {
     let mut out = String::new();
-    let mut rest = spec_ensures;
-    let mut n = 0usize;
-    // `(` / `)` bytes never occur inside a UTF-8 multibyte sequence, so byte scanning is safe.
+    let mut rest = s;
     while let Some(open) = rest.find("(forall ") {
         let b = rest.as_bytes();
         let mut depth = 0i32;
@@ -458,12 +459,11 @@ fn rewrite_guarded_id_quantifiers(spec_ensures: &str) -> String {
             break; // unbalanced — leave the remainder untouched
         };
         out.push_str(&rest[..open]);
-        match rewrite_one_forall(&rest[open + 1..close], n) {
+        match f(&rest[open + 1..close]) {
             Some(rw) => {
                 out.push('(');
                 out.push_str(&rw);
                 out.push(')');
-                n += 1;
             }
             None => out.push_str(&rest[open..=close]),
         }
@@ -471,6 +471,58 @@ fn rewrite_guarded_id_quantifiers(spec_ensures: &str) -> String {
     }
     out.push_str(rest);
     out
+}
+
+fn rewrite_guarded_id_quantifiers(spec_ensures: &str) -> String {
+    let mut n = 0usize;
+    map_paren_foralls(spec_ensures, |inner| {
+        let rw = rewrite_one_forall(inner, n);
+        if rw.is_some() {
+            n += 1;
+        }
+        rw
+    })
+}
+
+/// Does `s` contain a top-level (paren/bracket-depth-0) `<==>` (iff)?
+fn has_top_iff(s: &str) -> bool {
+    let b = s.as_bytes();
+    let mut depth = 0i32;
+    let mut i = 0usize;
+    while i + 3 < b.len() {
+        match b[i] {
+            b'(' | b'[' => depth += 1,
+            b')' | b']' => depth -= 1,
+            b'<' if depth == 0 && b[i + 1] == b'=' && b[i + 2] == b'=' && b[i + 3] == b'>' => {
+                return true
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    false
+}
+
+/// Wrap the implication consequent of one `forall <vars> :: <ante> ==> <cons>` when `<cons>` has a
+/// top-level `<==>` — recovering the intended `<ante> ==> (<cons>)`. Dafny parses `==> A <==> B`
+/// as `(==> A) <==> B` (iff binds loosest), which moves the range out of the quantifier domain so
+/// it cannot compile (G-0007). `None` when there is no implication or no top-level iff.
+fn normalize_one_forall_iff(inner: &str) -> Option<String> {
+    let dc = inner.find("::")?;
+    let head = &inner[..dc + 2];
+    let (ante, cons) = split_top_implication(&inner[dc + 2..])?;
+    has_top_iff(cons).then(|| format!("{head} {} ==> ({})", ante.trim(), cons.trim()))
+}
+
+/// Normalize the `<==>`-precedence footgun (M-0013/G-0007) in a spec's `ensures`: in each
+/// `(forall …)` body, parenthesize an implication consequent that contains a top-level `<==>`, so
+/// `forall i :: 0 <= i < |t| ==> A <==> B` recovers the intended `… ==> (A <==> B)` and compiles.
+/// Applied on the EXECUTION path only — the verifier already rejects the ill-formed literal form,
+/// and the gate's verdict then reflects the model's intended contract. Conservative: it only adds
+/// parentheses around a consequent that already contains an iff; it never weakens a spec, so it
+/// cannot turn an over-claim into a valid (a `<==>`-typo over-claim stays an over-claim).
+fn normalize_iff_precedence(spec_ensures: &str) -> String {
+    map_paren_foralls(spec_ensures, normalize_one_forall_iff)
 }
 
 /// Extra directories appended to the child `PATH` so the Dafny Go backend (`go` +
@@ -691,10 +743,12 @@ fn execute_validity(
         );
         return Validity::Inconclusive;
     }
-    // M-0013: rewrite guarded id-quantifiers to bounded iteration on the execution path only
-    // (the verifier reasoned about the original form), so correct specs quantifying over present
-    // ids execute instead of failing to compile.
-    let rewritten = rewrite_guarded_id_quantifiers(spec_ensures);
+    // M-0013: two execution-path-only normalizations (the verifier reasoned about the literal
+    // form), so correct specs execute instead of failing to compile: (1) recover the intended
+    // `==> (A <==> B)` grouping the `<==>`-precedence footgun mangles; (2) rewrite guarded
+    // id-quantifiers (`forall x :: HasId(t,x) ==> …`) to bounded iteration.
+    let normalized = normalize_iff_precedence(spec_ensures);
+    let rewritten = rewrite_guarded_id_quantifiers(&normalized);
     let conj = ensures_to_conjunction(&rewritten);
     if conj == "true" {
         // No real `ensures` clause survived extraction (a truncated/empty spec that the
@@ -5163,6 +5217,120 @@ lemma Spec(t: Tree, oldId: Id, newId: Id)\n\
             v,
             Validity::Unexecutable,
             "must not be the G-0007 Unexecutable artifact"
+        );
+    }
+
+    /// AC-3 (G-0007): the `<==>`-precedence normalization wraps an implication consequent that
+    /// contains a top-level iff (recovering the intended grouping) and is conservative everywhere
+    /// else. Pure; no Dafny.
+    #[test]
+    fn normalize_iff_precedence_wraps_consequent_conservatively() {
+        // implication consequent with a top-level <==> → wrapped
+        assert_eq!(
+            normalize_iff_precedence("(forall i :: 0 <= i < |t| ==> A(i) <==> B(i))"),
+            "(forall i :: 0 <= i < |t| ==> (A(i) <==> B(i)))"
+        );
+        // multi-variable forall (the bug is not var-count specific) → wrapped
+        assert_eq!(
+            normalize_iff_precedence("(forall i, k :: 0 <= i < |t| ==> P(i, k) <==> Q(i, k))"),
+            "(forall i, k :: 0 <= i < |t| ==> (P(i, k) <==> Q(i, k)))"
+        );
+        // no <==> in the consequent → unchanged; already-parenthesized iff → unchanged (idempotent)
+        for unchanged in [
+            "(forall i :: 0 <= i < |t| ==> A(i) && B(i))",
+            "(forall i :: 0 <= i < |t| ==> (A(i) <==> B(i)))",
+        ] {
+            assert_eq!(normalize_iff_precedence(unchanged), unchanged);
+        }
+    }
+
+    /// The actual `M-0011` calibration `opus-4.8` disinterested response (G-0007): a correct,
+    /// thorough spec with the `<==>`-precedence footgun (`==> t'[i].id == newId <==> (…)`).
+    /// Committed verbatim.
+    const SMOKE_OPUS_IFF_M0011: &str = "```dafny\n\
+lemma Spec(t: Tree, oldId: Id, newId: Id)\n\
+  requires oldId != newId\n\
+  requires Valid(t)\n\
+  requires HasId(t, oldId)\n\
+  requires !HasId(t, newId)\n\
+  ensures\n\
+    var t' := Reallocate(t, oldId, newId);\n\
+    && |t'| == |t|\n\
+    && (forall i :: 0 <= i < |t'| ==>\n\
+          t'[i].id == Rw(t[i].id, oldId, newId)\n\
+          && t'[i].refs == RwRefs(t[i].refs, oldId, newId))\n\
+    && (forall i :: 0 <= i < |t'| ==> t'[i].id != oldId)\n\
+    && (forall i, k :: 0 <= i < |t'| && 0 <= k < |t'[i].refs| ==> t'[i].refs[k] != oldId)\n\
+    && !HasId(t', oldId)\n\
+    && Valid(t')\n\
+    && HasId(t', newId)\n\
+    && (forall i :: 0 <= i < |t| ==>\n\
+          t'[i].id == newId <==> (t[i].id == oldId || t[i].id == newId))\n\
+    && (forall i :: 0 <= i < |t| ==>\n\
+          (t[i].id == oldId ==> t'[i].id == newId)\n\
+          && (t[i].id != oldId ==> t'[i].id == t[i].id))\n\
+    && (forall i, k :: 0 <= i < |t| && 0 <= k < |t[i].refs| ==>\n\
+          (t[i].refs[k] == oldId ==> t'[i].refs[k] == newId)\n\
+          && (t[i].refs[k] != oldId ==> t'[i].refs[k] == t[i].refs[k]))\n\
+{ }\n\
+```\n";
+
+    /// AC-3 end-to-end: the opus disinterested spec with the `<==>` footgun was `Unexecutable`
+    /// (Dafny could not bound the quantifier once `<==>` mangled the grouping); with the
+    /// normalization it validates via execution.
+    #[test]
+    fn smoke_opus_iff_m0011_validates_via_normalization() {
+        let subject = subject_by_name("reallocate").unwrap();
+        let (preamble, ref_impl, _gold) = gold_slices(subject);
+        let ensures = extract_spec_ensures(SMOKE_OPUS_IFF_M0011).expect("ensures present");
+        assert!(ensures.contains("== newId <==> "), "the footgun is present");
+        let wd = fixture_workdir("m0013-iff");
+        let v = validate_spec(
+            &wd,
+            &preamble,
+            &ref_impl,
+            &subject.strength,
+            &ensures,
+            Duration::from_secs(60),
+            "",
+        );
+        assert!(
+            v.is_valid(),
+            "opus <==> spec must validate via the normalization (got {})",
+            v.label()
+        );
+        assert_ne!(
+            v,
+            Validity::Unexecutable,
+            "must not be the G-0007 Unexecutable artifact"
+        );
+    }
+
+    /// AC-4 soundness: the `<==>` normalization recovers the intended grouping but must NOT mask an
+    /// over-claim. A spec whose intended iff is FALSE of the reference impl (`result.id == oldId`
+    /// iff the entity *was* oldId — false for the renamed target) is still caught as ExecOverclaim
+    /// after normalization. (An UNwrapped `<==>` forall the normalization does not reach stays the
+    /// safe `Unexecutable` — never a false-valid either way.)
+    #[test]
+    fn iff_normalization_does_not_mask_an_overclaim() {
+        let subject = subject_by_name("reallocate").unwrap();
+        let (preamble, ref_impl, _gold) = gold_slices(subject);
+        let wd = fixture_workdir("m0013-iff-overclaim");
+        let over = "  ensures (forall i :: 0 <= i < |t| ==> Reallocate(t, oldId, newId)[i].id == oldId <==> t[i].id == oldId)";
+        let v = validate_spec(
+            &wd,
+            &preamble,
+            &ref_impl,
+            &subject.strength,
+            over,
+            Duration::from_secs(60),
+            "",
+        );
+        assert_eq!(
+            v,
+            Validity::ExecOverclaim,
+            "a <==>-typo over-claim must still be caught (no false-valid); got {}",
+            v.label()
         );
     }
 
