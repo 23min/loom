@@ -144,3 +144,67 @@ recorded run — `M-0011` runs N=30 on the certified gate afterward.
 - Depends on `M-0010` (the instrument + frozen §6) and `M-0012` (the hybrid gate it extends and
   certifies). Addresses `G-0007`. **Blocks `M-0011`'s recorded run** — the run resumes once the
   instrument is certified.
+
+## Work log
+
+Implementation across three feat commits plus an adversarial-review fix on
+`milestone/M-0013` (the §6 prereg and frozen formula untouched throughout):
+
+- **AC-1** — `extract_spec_ensures` terminates at `{`/`}`/fence. Unit test + the actual opus
+  disinterested smoke fixture (bare-`}` lemma) → valid. The dominant confound; opus disinterested
+  went from being unparseable to clean. · commit `0024c7f`
+- **AC-2** — `extract_spec_helpers` captures model `function`/`predicate` defs (excl. `Reallocate`,
+  deduped, recursive bodies) threaded via `with_helpers` through validate/score/probe. The opus
+  `RwEntity` and a recursive `IndexOfId` fixtures flip `Unexecutable`→valid. · commit `0024c7f`
+- **AC-3** — `rewrite_guarded_id_quantifiers` (`forall x :: HasId(t,x) ==> P` → bounded `var`-let,
+  exact equivalence, freshness-guarded) and `normalize_iff_precedence` (the `<==>` footgun). The
+  sonnet (unbounded guarded) and opus (`<==>`) fixtures → valid. · commits `0024c7f`, `efcbf36`
+- **AC-4** — battery enriched (single-entity, empty-refs, self-ref, larger trees); an adversarial
+  suite of 7 over-claims (4 mutant + 3 non-mutant) each caught `ExecOverclaim`. · commit `0024c7f`
+- **AC-5** — full N=10 × 3-model calibration on the certified gate; residual 2/60 ≈ 3.3% (the
+  genuine undecidable bare-iff-over-all-ids class), arm-balanced, a real over-claim caught. Error
+  bounds recorded in `D-0004`. · decision `D-0004`
+- **Review fix** — adversarial review found a guarded-rewrite variable-capture false-valid; fixed
+  by the freshness bail; the reviewer's trigger is a passing regression. · commit `f0ee932`
+
+## Decisions made during implementation
+
+- **`D-0004`** (accepted) — the over-claim instrument certification: error bound ≈ 3.3% residual
+  (genuine undecidable class), no false-valids (with the freshness guard), arm-balanced; the
+  boundary the `M-0011` terminal decision is interpreted against.
+- The `<==>`-precedence handling and the certification scope (full 3-model calibration + adversarial
+  soundness, not just the transforms) were chosen interactively with the operator, who set the bar
+  at "as complete and certain as possible" for the foundational instrument.
+
+## Validation
+
+- `cargo test`: **64 passed; 0 failed; 4 ignored**. `clippy -D warnings` + `fmt --check` clean.
+- Each fix regression-pinned against the actual `M-0011` smoke/calibration spec (committed as a
+  fixture): opus disinterested (extraction + `<==>`), opus/haiku incentivized helpers, sonnet
+  disinterested (quantifier). Soundness pinned by `reallocate_enriched_battery_rejects_overclaims`,
+  `iff_normalization_does_not_mask_an_overclaim`, and
+  `guarded_rewrite_does_not_capture_a_same_named_binder`.
+- Calibrations on the restored API: opus N=15 → 0% residual; full N=10 × 3 → 3.3% residual,
+  arm-balanced, 1 genuine over-claim caught. `prereg-reallocate.md` unmodified (`bb1d220`).
+
+## Deferrals
+
+None blocking. The ~3.3% residual (undecidable bare-iff-over-all-ids) is accepted + surfaced per
+`D-0004`, not deferred. The helper-capture relevance gap (`D-0004`) is a known, non-false-valid
+under-specification, flagged for the run audit.
+
+## Reviewer notes
+
+- **Independent adversarial review (fresh-context)** over the 869-line diff, briefed to BREAK the
+  no-false-valids claim. Verdict: REQUEST-CHANGES → one blocking false-valid (guarded-rewrite
+  variable capture), demonstrated with a real `ExecValid` on an over-claim. Fixed (`f0ee932`,
+  freshness bail) and pinned by the reviewer's exact trigger; the fix is mechanical and
+  confirmed by the passing regression rather than a second review round. The reviewer also
+  confirmed the iff-normalization, `<==>`/`==>`/`<==` disambiguation, helper EXCLUDE list, brace
+  mis-capture, and frozen §6 surface are all sound.
+- **Helper-capture relevance gap** (non-blocking, `D-0004`): a model defining its own impl under a
+  name ≠ `Reallocate` validates against its own definition — an under-specification absorbed by the
+  strength dimension / `probe_error`, not an over-claim false-valid. No archived response does this.
+- **The residual is irreducible, not a missed bug.** An execution gate cannot decide arbitrary
+  model-Dafny; `M-0013` fixed every recurring fixable cause and the genuine undecidable remainder
+  is surfaced so a high run-time residual is itself a RERUN-OR-EXPAND signal.
