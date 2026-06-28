@@ -48,6 +48,25 @@ What runs:
 Knobs (env): `LOOM_TRIALS` (default 10), `LOOM_DAFNY_TIMEOUT` seconds (default
 30). Raw responses + `results.json` land under `runs/<unix-ts>/` (gitignored).
 
+### The `reallocate` hybrid validity gate (M-0012)
+
+The `reallocate` subject's correct specs use constructs (the `HasId(t', newId)`
+existential, `<==>` characterizations) that are **true** of the reference impl but
+**not** discharged by an empty-body `dafny verify` (`G-0006`). Its validity gate is
+therefore a **hybrid** (per `D-0003`): verify first, and on a rejection fall back to
+*executing* the candidate's `ensures` as a boolean predicate over a committed concrete
+battery (`REALLOCATE_BATTERY`) via the **Dafny Go backend**.
+
+This adds one toolchain dependency for the validity step on `reallocate`: `dafny run
+--target:go` needs **`go`** and **`goimports`** on `PATH`. The harness auto-probes the
+well-known locations (`/usr/local/go/bin`, `$HOME/go/bin`) and honours a `LOOM_GO_BIN`
+override (colon-separated dirs). Install `goimports` with `go install
+golang.org/x/tools/cmd/goimports@latest`. If the backend is **absent**, the fallback
+degrades **loudly** — a verify-rejected spec is left `inconclusive` (never silently
+counted valid or as an over-claim). The other subjects (canonicalize/fsm/prosey) keep
+the verify-only gate; their gold specs auto-prove, so they have no battery and need no
+Go backend.
+
 ## The measure
 
 For a candidate spec `S`: pair it with each implementation and `dafny verify`.
