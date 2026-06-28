@@ -17,7 +17,7 @@ acs:
       tdd_phase: done
     - id: AC-3
       title: M-0009 calibration holds under the new validity gate
-      status: open
+      status: met
       tdd_phase: done
 ---
 ## Goal
