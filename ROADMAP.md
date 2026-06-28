@@ -57,3 +57,14 @@ modes, not just one.
 | M-0012 | Harden the validity gate for executable-spec subjects | done |
 | M-0013 | Harden the spec extractor for complex executable specs | done |
 
+## E-0004 — Dogfood the whole umbrella loop on real aiwf code (proposed)
+
+### Goal
+
+Establish — by feasibility dogfood, **not** a pre-registered experiment — whether a
+non-formal author can drive loom's *whole* umbrella loop on **real** aiwf code: prose +
+examples in, an LLM-authored formal section, a verifier and a gap report out. Decide from
+observation whether to build the thin loom-light tool.
+
+_No milestones yet._
+
