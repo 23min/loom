@@ -117,10 +117,11 @@ Sequenced via `aiwfx-plan-milestones`; success references every milestone listed
 run, not a fixed count. The first loop is specced in detail next; later loops are candidates
 planned just-in-time, and any may be cancelled if an earlier loop closes the question:
 
-- **The transition-FSM loop** (the first loop) — turn the whole loop end-to-end on the real
-  `transition` logic (Dafny-friendly: discrete, no string parsing), plus whatever minimal
-  scaffolding the first loop needs. Validates the loop mechanics, ergonomics, faithfulness, and
-  gap-report value. *(no dependencies)*
+- [`M-0014`](M-0014-turn-the-umbrella-loop-on-the-status-transition-fsm.md) — **the transition-FSM
+  loop** (the first loop): turn the whole loop end-to-end on the real `transition` logic
+  (Dafny-friendly: discrete, no string parsing), plus whatever minimal scaffolding the first loop
+  needs. Validates the loop mechanics, ergonomics, faithfulness, and gap-report value.
+  *(no dependencies)*
 - **The canonicalization loop** — the string-based, per-kind-width, composite-recursion
   `Canonicalize`, a deliberate **tractability** stress run after the loop itself is validated.
   *(candidate; depends on the transition-FSM loop)*
