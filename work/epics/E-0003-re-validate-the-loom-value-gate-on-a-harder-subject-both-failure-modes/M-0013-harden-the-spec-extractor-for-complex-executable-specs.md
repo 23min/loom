@@ -15,7 +15,7 @@ acs:
     - id: AC-2
       title: Model-defined spec helpers are captured into the program
       status: open
-      tdd_phase: green
+      tdd_phase: done
     - id: AC-3
       title: Guarded id-quantifiers execute via a bounded rewrite
       status: open
