@@ -102,6 +102,10 @@ enum Outcome {
     Timeout,
 }
 
+/// A label for a raw `dafny verify` outcome. Since M-0012 routed the validity gate through
+/// `Validity` (which carries its own `label`), the only remaining consumers are the
+/// calibration tests that assert on a direct `run_dafny` outcome — so it is test-only.
+#[cfg(test)]
 fn outcome_label(o: Outcome) -> &'static str {
     match o {
         Outcome::Verified => "verified",
@@ -188,6 +192,9 @@ fn run_dafny(file: &Path, timeout: Duration) -> (Outcome, String) {
 
 struct Score {
     valid: bool,
+    /// The validity-gate category (M-0012) — `valid` is `validity.is_valid()`, kept so the
+    /// run census can count `Unexecutable` distinctly from a genuine over-claim.
+    validity: Validity,
     killed: usize,
     survived: usize,
     inconclusive: usize,
@@ -199,6 +206,7 @@ impl Score {
     fn empty() -> Score {
         Score {
             valid: false,
+            validity: Validity::Inconclusive,
             killed: 0,
             survived: 0,
             inconclusive: 0,
@@ -220,13 +228,347 @@ impl Score {
     }
 }
 
-/// Validity-gate a candidate spec against the reference impl, then score it
-/// against the mutant bank. A spec that the *correct* impl fails is over-strong
-/// and reported invalid (excluded), per loom-ultralight.md §4.
-/// The over-claim (validity) gate: does the reference implementation verify against
-/// the candidate spec? A spec the reference impl fails is too strong — an over-claim —
-/// and is invalid. Single owner of "valid" (C1): both the kill-rate scorer
-/// (`score_spec`) and the strength probe (`probe_spec`) consult it, so an over-claim is
+/// The validity-gate verdict for a candidate spec (M-0012 hybrid gate, per `D-0003`).
+/// Valid iff `Provable` or `ExecValid`. The invalid variants are kept DISTINCT — never
+/// collapsed into one bool — so a ghost-only spec the gate could not execute
+/// (`Unexecutable`) is surfaced separately from a genuine over-claim (`ExecOverclaim`),
+/// and Z3/exec nondeterminism (`Inconclusive`) is folded into neither tally (G1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Validity {
+    /// `dafny verify` discharged the spec against the reference impl (the fast, sound path).
+    Provable,
+    /// verify rejected it, but it holds on every concrete battery tree (execution fallback).
+    ExecValid,
+    /// verify rejected it and it is FALSE on some battery tree — a genuine over-claim.
+    ExecOverclaim,
+    /// verify rejected it and it could not be compiled/executed (a ghost-only construct,
+    /// e.g. an unbounded quantifier) — invalid, but a DISTINCT, surfaced category.
+    Unexecutable,
+    /// verify rejected it and the subject has no execution battery (the E-0002 subjects,
+    /// whose gold specs auto-prove, so a rejection is a genuine invalid).
+    VerifyReject,
+    /// `dafny verify` (or the execution) timed out, or the Go backend was unavailable —
+    /// inconclusive, never silently folded into valid or over-claim.
+    Inconclusive,
+}
+
+impl Validity {
+    /// The over-claim gate's single source of "valid" (C1): a spec enters the valid
+    /// population iff the verifier proved it OR execution confirmed it on every battery tree.
+    fn is_valid(self) -> bool {
+        matches!(self, Validity::Provable | Validity::ExecValid)
+    }
+
+    /// A stable label for the audit trail (E3) — the per-spec `note` and run census.
+    fn label(self) -> &'static str {
+        match self {
+            Validity::Provable => "provable",
+            Validity::ExecValid => "exec-valid",
+            Validity::ExecOverclaim => "exec-overclaim",
+            Validity::Unexecutable => "unexecutable",
+            Validity::VerifyReject => "verify-reject",
+            Validity::Inconclusive => "inconclusive",
+        }
+    }
+}
+
+/// The per-case marker the battery program prints (`LOOM_CASE <i>=<bool>`), so the harness
+/// reads each case's boolean from stdout. Distinct enough not to collide with a Dafny/Go
+/// diagnostic line.
+const BATTERY_CASE_MARKER: &str = "LOOM_CASE";
+
+/// Turn a spec's `ensures` block (one or more `ensures CLAUSE` lines, each clause possibly
+/// multi-line) into a single boolean expression: each clause stripped of its `ensures`
+/// keyword, parenthesized, and AND-ed. The clause boundary is the same one
+/// `extract_spec_ensures` uses (a line whose trimmed text starts with `ensures`), so the
+/// executable predicate sees exactly the clauses the verifier did. Continuation lines are
+/// joined with NEWLINES (not spaces) so a `// comment` line stays line-scoped and cannot
+/// comment out the code that follows it. Empty ⇒ `true`.
+fn ensures_to_conjunction(spec_ensures: &str) -> String {
+    let mut clauses: Vec<String> = Vec::new();
+    let mut cur: Option<String> = None;
+    for line in spec_ensures.lines() {
+        if let Some(rest) = line.trim_start().strip_prefix("ensures") {
+            if let Some(c) = cur.take() {
+                clauses.push(c);
+            }
+            cur = Some(rest.trim_start().to_string());
+        } else if let Some(c) = cur.as_mut() {
+            c.push('\n');
+            c.push_str(line);
+        }
+    }
+    if let Some(c) = cur.take() {
+        clauses.push(c);
+    }
+    let clauses: Vec<String> = clauses
+        .into_iter()
+        .filter(|c| !c.trim().is_empty())
+        .collect();
+    if clauses.is_empty() {
+        return "true".to_string();
+    }
+    clauses
+        .iter()
+        .map(|c| format!("({c}\n  )"))
+        .collect::<Vec<_>>()
+        .join("\n  && ")
+}
+
+/// Extra directories appended to the child `PATH` so the Dafny Go backend (`go` +
+/// `goimports`) resolves. The contract is "go + goimports on `PATH`"; this convenience
+/// also probes a `LOOM_GO_BIN` override (colon-separated) and the well-known toolchain
+/// locations, appending only those that exist — a harmless no-op where go is already on
+/// `PATH`. Env coupling pushed to this one edge (G1).
+fn go_backend_path_env() -> String {
+    let mut parts: Vec<String> = Vec::new();
+    if let Ok(p) = std::env::var("PATH") {
+        parts.push(p);
+    }
+    let mut extra: Vec<String> = Vec::new();
+    if let Ok(b) = std::env::var("LOOM_GO_BIN") {
+        extra.extend(b.split(':').map(String::from));
+    }
+    extra.push("/usr/local/go/bin".to_string());
+    if let Ok(home) = std::env::var("HOME") {
+        extra.push(format!("{home}/go/bin"));
+    }
+    for d in extra {
+        if Path::new(&d).is_dir() {
+            parts.push(d);
+        }
+    }
+    parts.join(":")
+}
+
+/// Whether the Dafny Go backend is usable (`go` runs and `goimports` resolves), probed
+/// once and cached. When false, the execution fallback degrades to `Inconclusive` rather
+/// than silently miscounting — the toolchain dependency `D-0003` introduces, surfaced.
+fn go_backend_available() -> bool {
+    use std::sync::OnceLock;
+    static AVAIL: OnceLock<bool> = OnceLock::new();
+    *AVAIL.get_or_init(|| {
+        let path = go_backend_path_env();
+        let go_ok = Command::new("go")
+            .arg("version")
+            .env("PATH", &path)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        // `goimports -h` exits non-zero (usage), so test that it RESOLVES (`is_ok`), not that
+        // it succeeds — we only need it on PATH for the Dafny Go backend to call.
+        let goimports_ok = Command::new("goimports")
+            .arg("-h")
+            .env("PATH", &path)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .is_ok();
+        go_ok && goimports_ok
+    })
+}
+
+/// True when `strength` needs the execution-fallback gate (it has a battery) but the Go
+/// backend is unavailable — the one configuration that would silently corrupt the frozen
+/// over-claim rate, since every verify-rejected spec would become `Inconclusive` (counted in
+/// `extracted`, not in `valid`). A subject with no battery never needs the backend (the
+/// short-circuit), so calibration of an auto-proving subject stays backend-free.
+fn exec_backend_missing(strength: &StrengthSubject) -> bool {
+    !strength.exec_battery.is_empty() && !go_backend_available()
+}
+
+/// Fail-fast before a candidate-scoring run on an execution-fallback subject (M-0012): refuse
+/// to produce a reading the missing instrument would corrupt — "degrade clearly" (`D-0003`),
+/// not silently. Calibration (gold only, auto-proves) never reaches here, so it stays
+/// backend-free; only the candidate-scoring paths (`--run`, `--rescore`, `--strength`) guard.
+fn require_exec_backend(strength: &StrengthSubject) {
+    if exec_backend_missing(strength) {
+        eprintln!(
+            "FATAL: this subject's validity gate falls back to execution (M-0012) but the Dafny \
+             Go backend (dafny run --target:go + goimports) is unavailable. Every verify-rejected \
+             spec would be inconclusive and silently inflate the over-claim rate (1 - valid/extracted). \
+             Install go + goimports (see README.md) or set LOOM_GO_BIN; aborting rather than \
+             recording a corrupted run."
+        );
+        std::process::exit(1);
+    }
+}
+
+/// Compile-and-run a Dafny program through the Go backend under the watchdog. Returns
+/// `(timed_out, combined_output)`. Verification is skipped (`--no-verify`) — this path is
+/// for EXECUTION; soundness comes from the verify-first step in `validate_spec`.
+fn run_dafny_exec(file: &Path, timeout: Duration) -> (bool, String) {
+    let path = go_backend_path_env();
+    let mut child = match Command::new("dafny")
+        .arg("run")
+        .arg("--no-verify")
+        .arg("--allow-warnings")
+        .arg("--target:go")
+        .arg(file)
+        .env("PATH", &path)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+    {
+        Ok(c) => c,
+        Err(e) => return (false, format!("spawn dafny run failed: {e}")),
+    };
+    match child.wait_timeout(timeout) {
+        Ok(Some(_status)) => {
+            // The battery program + its Go build output are well under the pipe buffer,
+            // so reading after the process exits cannot deadlock (mirrors `run_dafny`).
+            let mut out = String::new();
+            let mut err = String::new();
+            if let Some(mut so) = child.stdout.take() {
+                let _ = so.read_to_string(&mut out);
+            }
+            if let Some(mut se) = child.stderr.take() {
+                let _ = se.read_to_string(&mut err);
+            }
+            (false, format!("{out}{err}"))
+        }
+        Ok(None) => {
+            let _ = child.kill();
+            let _ = child.wait();
+            (true, String::from("exec timeout"))
+        }
+        Err(e) => (false, format!("wait dafny run failed: {e}")),
+    }
+}
+
+/// The execution fallback (M-0012, per `D-0003`): for a spec the verifier REJECTED, decide
+/// validity by EXECUTING the candidate's `ensures` as a boolean predicate over the subject's
+/// committed concrete-input battery via the Dafny Go backend. Valid iff it holds on every
+/// battery case (a single compile per spec — all cases batched into one `Main`). A spec that
+/// cannot be compiled (a ghost-only construct — e.g. an unbounded quantifier) is
+/// `Unexecutable`: invalid, but a distinct category, never folded into a genuine over-claim.
+/// Backend absent ⇒ `Inconclusive` (degrade loudly, never silently valid).
+/// The outcome of executing a boolean predicate over a battery: the per-case results in
+/// battery order, or a non-`Ran` terminal (the program timed out, or could not be compiled
+/// — a ghost-only construct — so no case line was printed).
+enum BatteryRun {
+    Ran(Vec<bool>),
+    Timeout,
+    Unexecutable,
+}
+
+/// Build + run one battery program — the shared preamble, then `impl_src`, then a
+/// `predicate P(binder) { body }`, then a `Main` that prints `LOOM_CASE <i>=<bool>` for each
+/// battery case — compiled and executed via the Dafny Go backend. Returns the per-case
+/// booleans in battery order. The single program-builder behind both the gate's execution
+/// fallback (`execute_validity`, with `body` the candidate's ensures and `impl_src` the
+/// reference impl) and the battery-coverage test (`body` one gold clause, `impl_src` the
+/// reference impl or a mutant).
+fn run_battery(
+    workdir: &Path,
+    preamble: &str,
+    impl_src: &str,
+    binder: &str,
+    battery: &[ExecCase],
+    pred_body: &str,
+    timeout: Duration,
+) -> BatteryRun {
+    let mut cases = String::new();
+    for (i, c) in battery.iter().enumerate() {
+        cases.push_str(&format!(
+            "  print \"{BATTERY_CASE_MARKER} {i}=\", P({}), \"\\n\"; // {}\n",
+            c.args.join(", "),
+            c.label,
+        ));
+    }
+    let prog = format!(
+        "{preamble}\n\n{impl_src}\n\n\
+         predicate P({binder}) {{\n  {pred_body}\n}}\n\n\
+         method Main() {{\n{cases}}}\n",
+    );
+    // Each caller uses its own workdir (the production `.work`, or a per-test fixture dir),
+    // and battery runs are sequential within one, so a fixed filename cannot collide. NO
+    // leading `_`: the Go toolchain (the backend `dafny run --target:go` shells out to)
+    // ignores files/dirs whose names start with `_`, so a `_battery-go/` build dir yields
+    // "no Go files" — the stem must be Go-safe.
+    let file = workdir.join("battery.dfy");
+    fs::write(&file, prog).unwrap();
+    let (timed_out, output) = run_dafny_exec(&file, timeout);
+    if timed_out {
+        return BatteryRun::Timeout;
+    }
+    let mut results = Vec::with_capacity(battery.len());
+    for i in 0..battery.len() {
+        let needle = format!("{BATTERY_CASE_MARKER} {i}=");
+        match output
+            .lines()
+            .find_map(|l| l.trim().strip_prefix(needle.as_str()))
+        {
+            Some("true") => results.push(true),
+            Some("false") => results.push(false),
+            // A missing case line ⇒ the program never reached it (resolution / compile
+            // failure) — the spec is not executable.
+            _ => return BatteryRun::Unexecutable,
+        }
+    }
+    BatteryRun::Ran(results)
+}
+
+/// The execution fallback (M-0012, per `D-0003`): for a spec the verifier REJECTED, decide
+/// validity by EXECUTING the candidate's `ensures` as a boolean predicate over the subject's
+/// committed concrete-input battery via the Dafny Go backend. Valid iff it holds on every
+/// battery case (a single compile per spec). A spec that cannot be compiled (a ghost-only
+/// construct — e.g. an unbounded quantifier) is `Unexecutable`: invalid, but a distinct
+/// category, never folded into a genuine over-claim. Backend absent ⇒ `Inconclusive`
+/// (degrade loudly, never silently valid).
+fn execute_validity(
+    workdir: &Path,
+    preamble: &str,
+    ref_impl: &str,
+    subject: &StrengthSubject,
+    spec_ensures: &str,
+    timeout: Duration,
+) -> Validity {
+    if !go_backend_available() {
+        eprintln!(
+            "[validity] Go backend (dafny run --target:go + goimports) unavailable; \
+             execution fallback skipped — spec left inconclusive (see experiments/loom-ultralight/README.md)"
+        );
+        return Validity::Inconclusive;
+    }
+    let conj = ensures_to_conjunction(spec_ensures);
+    if conj == "true" {
+        // No real `ensures` clause survived extraction (a truncated/empty spec that the
+        // verifier already rejected). A vacuous `true` predicate would execute valid on every
+        // tree — a silent false-valid; classify it as the non-valid `Unexecutable` residual.
+        return Validity::Unexecutable;
+    }
+    match run_battery(
+        workdir,
+        preamble,
+        ref_impl,
+        subject.binder,
+        subject.exec_battery,
+        &conj,
+        timeout,
+    ) {
+        BatteryRun::Ran(v) => {
+            if v.iter().all(|&b| b) {
+                Validity::ExecValid
+            } else {
+                Validity::ExecOverclaim
+            }
+        }
+        BatteryRun::Timeout => Validity::Inconclusive,
+        BatteryRun::Unexecutable => Validity::Unexecutable,
+    }
+}
+
+/// The over-claim (validity) gate (M-0012 hybrid, per `D-0003`): does the reference
+/// implementation satisfy the candidate spec? Run `dafny verify` first (fast, sound — a
+/// `Provable` spec is valid); on a verifier REJECTION, fall back to executing the spec over
+/// the subject's concrete battery (`execute_validity`) so a correct-but-not-auto-provable
+/// spec (existentials, iff-characterizations) counts as valid and only a genuine over-claim
+/// (false on some input) is rejected. A subject with no battery keeps the verify-only gate
+/// (`VerifyReject`). Single owner of "valid" (C1): both the kill-rate scorer (`score_spec`)
+/// and the strength probe (`probe_spec`) consult `Validity::is_valid`, so an over-claim is
 /// excluded from both measures and never inflates either toward the null.
 fn validate_spec(
     workdir: &Path,
@@ -235,7 +577,7 @@ fn validate_spec(
     subject: &StrengthSubject,
     spec_ensures: &str,
     timeout: Duration,
-) -> Outcome {
+) -> Validity {
     let vfile = workdir.join("_validity.dfy");
     fs::write(
         &vfile,
@@ -248,7 +590,17 @@ fn validate_spec(
         ),
     )
     .unwrap();
-    run_dafny(&vfile, timeout).0
+    match run_dafny(&vfile, timeout).0 {
+        Outcome::Verified => Validity::Provable,
+        Outcome::Timeout => Validity::Inconclusive,
+        Outcome::Failed => {
+            if subject.exec_battery.is_empty() {
+                Validity::VerifyReject
+            } else {
+                execute_validity(workdir, preamble, ref_impl, subject, spec_ensures, timeout)
+            }
+        }
+    }
 }
 
 fn score_spec(
@@ -261,7 +613,7 @@ fn score_spec(
     timeout: Duration,
 ) -> Score {
     let mut score = Score::empty();
-    let vo = validate_spec(
+    let v = validate_spec(
         workdir,
         preamble,
         ref_impl,
@@ -269,11 +621,9 @@ fn score_spec(
         spec_ensures,
         timeout,
     );
-    if vo != Outcome::Verified {
-        score.note = format!(
-            "invalid: reference impl did not verify against spec ({})",
-            outcome_label(vo)
-        );
+    score.validity = v;
+    if !v.is_valid() {
+        score.note = format!("invalid: {} (validity gate)", v.label());
         return score;
     }
     score.valid = true;
@@ -598,10 +948,24 @@ struct ScoreCtx<'a> {
     mutants: &'a BTreeMap<String, String>,
 }
 
-/// One kill-rate table row: `(model, condition, valid, extracted, trials, mean_kill)`.
-/// `extracted` (specs that parsed) is the over-claim-rate denominator; `valid` (passed
-/// the validity gate) is the §6 power denominator.
-type KillRow = (String, String, usize, usize, usize, Option<f64>);
+/// One kill-rate table row:
+/// `(model, condition, valid, extracted, trials, mean_kill_rate, unexecutable, inconclusive)`.
+/// `extracted` (specs that parsed) is the over-claim-rate denominator; `valid` (passed the
+/// validity gate) is the §6 power denominator. `unexecutable` (ghost-only specs the hybrid gate
+/// could not execute) and `inconclusive` (verify/exec timeout, or Go backend absent) are the
+/// M-0012 residuals — both INVALID and so already inside `extracted − valid`, but reported
+/// distinctly so a reader can tell a true over-claim from an automation artifact. They never
+/// change the frozen rate `1 − valid/extracted`; they make it auditable (E3/G3).
+type KillRow = (
+    String,
+    String,
+    usize,
+    usize,
+    usize,
+    Option<f64>,
+    usize,
+    usize,
+);
 
 /// A kill-rate sweep's result: the per model×condition mean kill-rate, and the per-row
 /// table.
@@ -630,6 +994,13 @@ where
             let mut rates: Vec<f64> = Vec::new();
             let mut valid = 0usize;
             let mut extracted = 0usize;
+            // M-0012 residuals — both invalid (already inside `extracted − valid`), counted
+            // distinctly so the over-claim numerator (1 − valid/extracted) is never SILENTLY
+            // inflated by an automation artifact rather than a true over-claim: `unexecutable`
+            // = ghost-only specs the gate could not execute; `inconclusive` = verify/exec
+            // timeout (the Go backend's absence is refused up front by `require_exec_backend`).
+            let mut unexecutable = 0usize;
+            let mut inconclusive = 0usize;
             for trial in 1..=n {
                 let resp = match get_resp(mlabel, cond, trial) {
                     Some(r) => r,
@@ -653,6 +1024,11 @@ where
                     timeout,
                 );
                 if !s.valid {
+                    match s.validity {
+                        Validity::Unexecutable => unexecutable += 1,
+                        Validity::Inconclusive => inconclusive += 1,
+                        _ => {}
+                    }
                     eprintln!("[{mlabel}/{cond}/{trial}] {}", s.note);
                     continue;
                 }
@@ -662,7 +1038,8 @@ where
                     rates.push(r);
                 }
                 println!(
-                    "[{mlabel}/{cond}/{trial}] valid · killed {}/{} · inconclusive {} · kill_rate {}",
+                    "[{mlabel}/{cond}/{trial}] valid ({}) · killed {}/{} · inconclusive {} · kill_rate {}",
+                    s.validity.label(), // M-0012: shows `exec-valid` when the fallback was load-bearing
                     s.killed,
                     ctx.mutants.len(),
                     s.inconclusive,
@@ -682,6 +1059,8 @@ where
                 extracted,
                 n,
                 mean,
+                unexecutable,
+                inconclusive,
             ));
         }
     }
@@ -689,22 +1068,28 @@ where
 }
 
 /// The kill-rate results JSON: one row per model×condition carrying `valid`, `extracted`
-/// (the over-claim-rate denominator), `trials`, and the mean kill-rate. Pure — split from
-/// `print_results` so the row shape (a B2 boundary the verdict step and external
-/// consumers read) is testable without a sweep.
+/// (the over-claim-rate denominator), `trials`, the mean kill-rate, and the M-0012 residuals
+/// `unexecutable` (ghost-only) and `inconclusive` (verify/exec timeout) — surfaced so the
+/// over-claim rate is auditable; neither ever enters the frozen `1 − valid/extracted`.
+/// Pure — split from `print_results` so the row shape (a B2 boundary the verdict step and
+/// external consumers read) is testable without a sweep.
 fn results_json(n: usize, mutant_count: usize, table: &[KillRow]) -> serde_json::Value {
     let rows: Vec<serde_json::Value> = table
         .iter()
-        .map(|(m, c, valid, extracted, trials, mean)| {
-            serde_json::json!({
-                "model": m,
-                "condition": c,
-                "valid": valid,
-                "extracted": extracted,
-                "trials": trials,
-                "mean_kill_rate": mean,
-            })
-        })
+        .map(
+            |(m, c, valid, extracted, trials, mean, unexecutable, inconclusive)| {
+                serde_json::json!({
+                    "model": m,
+                    "condition": c,
+                    "valid": valid,
+                    "extracted": extracted,
+                    "trials": trials,
+                    "mean_kill_rate": mean,
+                    "unexecutable": unexecutable,
+                    "inconclusive": inconclusive,
+                })
+            },
+        )
         .collect();
     serde_json::json!({ "n": n, "mutants": mutant_count, "rows": rows })
 }
@@ -721,16 +1106,18 @@ fn print_results(
 ) {
     println!("\n=== kill-rate table (N={n}, mutants={mutant_count}) ===");
     println!(
-        "{:<12} {:<14} {:>14} {:>12}",
-        "model", "condition", "valid/ext/n", "mean_kill"
+        "{:<12} {:<14} {:>14} {:>12} {:>8} {:>6}",
+        "model", "condition", "valid/ext/n", "mean_kill", "ghost", "incon"
     );
-    for (m, c, v, ext, ntot, mean) in table {
+    for (m, c, v, ext, ntot, mean, unexec, incon) in table {
         println!(
-            "{:<12} {:<14} {:>14} {:>12}",
+            "{:<12} {:<14} {:>14} {:>12} {:>8} {:>6}",
             m,
             c,
             format!("{v}/{ext}/{ntot}"),
-            mean.map(|x| format!("{x:.2}")).unwrap_or("—".into())
+            mean.map(|x| format!("{x:.2}")).unwrap_or("—".into()),
+            unexec,
+            incon
         );
     }
 
@@ -773,6 +1160,8 @@ fn run(
     models: &[(&'static str, &'static str)],
     timeout: Duration,
 ) {
+    // M-0012: refuse to spend API tokens on a run the missing Go backend would corrupt.
+    require_exec_backend(&subject.strength);
     let key = std::env::var("ANTHROPIC_API_KEY").unwrap_or_default();
     if key.is_empty() {
         eprintln!("ANTHROPIC_API_KEY not set — needed for --run.");
@@ -857,6 +1246,7 @@ fn rescore(
         eprintln!("--rescore: {} is not a directory", runs_dir.display());
         std::process::exit(2);
     }
+    require_exec_backend(&subject.strength); // M-0012: same instrument guard as --run
     let n: usize = std::env::var("LOOM_TRIALS")
         .ok()
         .and_then(|s| s.parse().ok())
@@ -927,6 +1317,20 @@ struct StrengthSubject {
     /// Empty when the subject has no standing precondition.
     requires: &'static str,
     obligations: &'static [Obligation],
+    /// The execution-fallback battery (M-0012, per `D-0003`): concrete input tuples the
+    /// hybrid validity gate evaluates a verify-REJECTED spec against. Empty for subjects
+    /// whose gold specs auto-prove (canonicalize/fsm/prosey) — those keep the verify-only
+    /// gate (`Validity::VerifyReject` on a rejection).
+    exec_battery: &'static [ExecCase],
+}
+
+/// One concrete input tuple for the execution-fallback validity gate (M-0012): the binder
+/// arguments as Dafny source literals, in `StrengthSubject::binder` order, satisfying the
+/// subject's `requires`. For reallocate that is `[tree-literal, oldId, newId]`. `label` is
+/// a short tag for the audit trail (the generated `Main` comments each case with it).
+struct ExecCase {
+    args: &'static [&'static str],
+    label: &'static str,
 }
 
 impl StrengthSubject {
@@ -982,6 +1386,8 @@ const CANONICALIZE: StrengthSubject = StrengthSubject {
             free_key: "width_free",
         },
     ],
+    // The canonicalize gold spec auto-proves; no execution fallback needed.
+    exec_battery: &[],
 };
 
 // ===== E-0002 subjects: the strength gates wired into the production run path =====
@@ -1044,6 +1450,8 @@ const FSM_SUBJECT: StrengthSubject = StrengthSubject {
             goal: "forall k: Kind, f: Status, t: Status :: IsLegal(k, f, t) ==> !IsLegal(k, t, f)",
         },
     ],
+    // The FSM gold spec auto-proves; no execution fallback needed.
+    exec_battery: &[],
 };
 
 /// The prosey-title subject: opaque `IsProsey` over a single string, with the gold
@@ -1080,6 +1488,8 @@ const PROSEY_SUBJECT: StrengthSubject = StrengthSubject {
             goal: "!IsProsey(\"Go. up\")",
         },
     ],
+    // The prosey gold spec auto-proves; no execution fallback needed.
+    exec_battery: &[],
 };
 
 /// The id-reallocation subject (M-0009): a model of `aiwf reallocate` over a tree of
@@ -1097,6 +1507,45 @@ const PROSEY_SUBJECT: StrengthSubject = StrengthSubject {
 /// `|result| == |t|` (length, not contents) so the per-entity obligations
 /// `Reallocate(...)[i]` are well-formed against the hidden body; length-preservation is
 /// not an obligation, so it never leaks into the {R, F, C} measure.
+/// The reallocate execution battery (M-0012, per `D-0003`): concrete `Tree` inputs the
+/// hybrid validity gate evaluates a verify-rejected spec against. Every case satisfies the
+/// reallocation precondition (`oldId != newId`, `Valid(t)`, `HasId(t, oldId)`,
+/// `!HasId(t, newId)`) — `reallocate_battery_cases_satisfy_precondition` proves it — and the
+/// set is derived from the {R, F, C}-violation modes the mutant bank encodes:
+/// `reallocate_battery_distinguishes_every_violation` proves some case separates the
+/// reference impl from each mutant on the gold clause it breaks (bounding the
+/// testing-incompleteness caveat `D-0003` flags). Each tuple is `[tree, oldId, newId]` in
+/// `REALLOCATE.binder` order — Dafny source literals, not Rust values.
+const REALLOCATE_BATTERY: &[ExecCase] = &[
+    // Target first; entities 2 & 3 hold DISTANT references to oldId (so a fix that rewrites
+    // only the renamed entity's own refs — m_partial_refs — is exposed), and the target's
+    // own ref (to id 2) is a non-oldId ref. Multiple entities ⇒ the frame (F) is non-vacuous.
+    ExecCase {
+        args: &[
+            "[Entity(1, [2]), Entity(2, [1]), Entity(3, [1, 2])]",
+            "1",
+            "9",
+        ],
+        label: "distant_refs",
+    },
+    // Target holds a self-reference to oldId AND a distant entity references it — exercises
+    // rewriting the renamed entity's own refs and another entity's refs together.
+    ExecCase {
+        args: &["[Entity(5, [5, 6]), Entity(6, [5])]", "5", "1"],
+        label: "self_and_distant_ref",
+    },
+    // Target is NOT first (index 1); two other entities reference oldId — positional coverage
+    // so an over-claim keyed to the target sitting at index 0 is still caught.
+    ExecCase {
+        args: &[
+            "[Entity(8, [3]), Entity(3, [8]), Entity(5, [8, 3])]",
+            "3",
+            "1",
+        ],
+        label: "target_not_first",
+    },
+];
+
 const REALLOCATE: StrengthSubject = StrengthSubject {
     opaque_decls: "function {:opaque} Reallocate(t: Tree, oldId: Id, newId: Id): Tree\n  ensures |Reallocate(t, oldId, newId)| == |t|\n{ t }",
     binder: "t: Tree, oldId: Id, newId: Id",
@@ -1118,6 +1567,10 @@ const REALLOCATE: StrengthSubject = StrengthSubject {
             goal: "forall i :: 0 <= i < |t| ==> Reallocate(t, oldId, newId)[i].refs == RwRefs(t[i].refs, oldId, newId)",
         },
     ],
+    // reallocate's correct specs use existentials / iff-characterizations the empty-body
+    // verifier cannot discharge (G-0006); the hybrid gate falls back to executing them over
+    // this concrete battery (D-0003 / M-0012).
+    exec_battery: REALLOCATE_BATTERY,
 };
 
 /// The canonicalize mutant bank lives in the `MUTANTS` const (above); the two E-0002
@@ -1432,15 +1885,15 @@ fn probe_spec(
 /// Failed → definite, Timeout → `obligation_timeouts` dropped from the denominator.
 fn probe_spec_core<F: FnMut(&str) -> Outcome>(
     subject: &StrengthSubject,
-    validity: Outcome,
+    validity: Validity,
     tally: &mut StrengthTally,
     mut probe: F,
 ) -> bool {
-    // Validity gate (G-0005): exclude any spec the reference impl fails — an
-    // over-claim. Without it a resolving-but-invalid (e.g. ex-falso) over-claim would
-    // entail every obligation and inflate the rates toward the null, so the strength
-    // population is exactly the valid (kill-rate-valid) population.
-    if validity != Outcome::Verified {
+    // Validity gate (G-0005): exclude any spec that is not valid — an over-claim (or the
+    // ghost-only / inconclusive residual M-0012 surfaces). Without it a resolving-but-invalid
+    // (e.g. ex-falso) over-claim would entail every obligation and inflate the rates toward
+    // the null, so the strength population is exactly the valid (kill-rate-valid) population.
+    if !validity.is_valid() {
         tally.invalid += 1;
         return false;
     }
@@ -1502,6 +1955,7 @@ fn compute_strength(
     timeout: Duration,
     n: usize,
 ) -> BTreeMap<(String, String), StrengthTally> {
+    require_exec_backend(subject); // M-0012: the strength sweep also scores candidate specs
     let mut tallies: BTreeMap<(String, String), StrengthTally> = BTreeMap::new();
     for (mlabel, _mid) in models {
         for cond in CONDITIONS {
@@ -2551,12 +3005,16 @@ mod tests {
             30usize,
             30usize,
             Some(0.9),
+            2usize, // unexecutable (M-0012): surfaced, never folded into the rate
+            1usize, // inconclusive (M-0012): likewise surfaced, never folded
         )];
         let v = results_json(30, 11, &table);
         let row = &v["rows"].as_array().unwrap()[0];
         assert_eq!(row["valid"], 15);
         assert_eq!(row["extracted"], 30);
         assert_eq!(row["trials"], 30); // over-claim rate = 1 - 15/30 = 0.5
+        assert_eq!(row["unexecutable"], 2);
+        assert_eq!(row["inconclusive"], 1);
     }
 
     /// AC-4: `read_arm_counts` parses the per-arm census; a pre-AC-4 record without
@@ -2961,7 +3419,7 @@ mod tests {
         let mut t = StrengthTally::default();
         assert!(probe_spec_core(
             &CANONICALIZE,
-            Outcome::Verified,
+            Validity::Provable,
             &mut t,
             scripted
         ));
@@ -2982,11 +3440,11 @@ mod tests {
         // Ladder: the exact rung verified
         assert_eq!(t.counts.get("width_exact"), Some(&1));
 
-        // Validity Failed → invalid, excluded, no obligation probed.
+        // Invalid (verify-rejected) → invalid, excluded, no obligation probed.
         let mut t = StrengthTally::default();
         assert!(!probe_spec_core(
             &CANONICALIZE,
-            Outcome::Failed,
+            Validity::VerifyReject,
             &mut t,
             scripted
         ));
@@ -3005,7 +3463,7 @@ mod tests {
         let mut t = StrengthTally::default();
         assert!(!probe_spec_core(
             &CANONICALIZE,
-            Outcome::Verified,
+            Validity::Provable,
             &mut t,
             resolve_fail
         ));
@@ -3069,6 +3527,7 @@ mod tests {
         binder: "",
         requires: "",
         obligations: &[],
+        exec_battery: &[],
     };
 
     /// Prosey-title subject: a unary `string -> bool`, made opaque.
@@ -3077,6 +3536,7 @@ mod tests {
         binder: "",
         requires: "",
         obligations: &[],
+        exec_battery: &[],
     };
 
     // The full legality relation, as a spec that pins the negative space.
@@ -3728,14 +4188,14 @@ mod tests {
     }
 
     /// AC-1: the reallocate gold spec validates against the reference impl within the
-    /// timeout — the tractability gate (the quantified frame conditions discharge under
-    /// an empty-body lemma, the shape the harness assembles).
+    /// timeout via the FAST (verify) path — the quantified frame conditions discharge under
+    /// an empty-body lemma, so the gold never needs the M-0012 execution fallback.
     #[test]
     fn reallocate_gold_spec_is_valid_against_reference_impl() {
         let subject = subject_by_name("reallocate").unwrap();
         let (preamble, ref_impl, gold_ensures) = gold_slices(subject);
         let wd = fixture_workdir("realloc-valid");
-        let o = validate_spec(
+        let v = validate_spec(
             &wd,
             &preamble,
             &ref_impl,
@@ -3744,9 +4204,9 @@ mod tests {
             Duration::from_secs(30),
         );
         assert!(
-            o == Outcome::Verified,
-            "reallocate gold spec must validate against the reference impl (got {})",
-            outcome_label(o)
+            v == Validity::Provable,
+            "reallocate gold spec must validate via the verify path (got {})",
+            v.label()
         );
     }
 
@@ -3889,10 +4349,11 @@ mod tests {
         }
     }
 
-    /// AC-4: an over-claim — a spec too strong for the correct impl (here "references are
-    /// unchanged", the exact opposite of the rewrite the impl performs) — is caught by
-    /// the single-source validity gate (non-Verified ⇒ counted invalid, excluded). The
-    /// over-claiming failure mode is detectable on this subject.
+    /// AC-3 (M-0012): a genuine over-claim — a spec too strong for the correct impl (here
+    /// "references are unchanged", the exact opposite of the rewrite the impl performs) — is
+    /// still caught under the hybrid gate, now via the EXECUTION fallback: verify rejects it,
+    /// then it evaluates `false` on a battery tree (entities reference oldId), classified as a
+    /// genuine over-claim (`ExecOverclaim`), not silently lumped with the ghost-only residual.
     #[test]
     fn reallocate_over_claim_is_caught_by_validity_gate() {
         let subject = subject_by_name("reallocate").unwrap();
@@ -3900,7 +4361,7 @@ mod tests {
         let wd = fixture_workdir("realloc-overclaim");
         let over =
             "  ensures forall i :: 0 <= i < |t| ==> Reallocate(t, oldId, newId)[i].refs == t[i].refs";
-        let o = validate_spec(
+        let v = validate_spec(
             &wd,
             &preamble,
             &ref_impl,
@@ -3908,10 +4369,286 @@ mod tests {
             over,
             Duration::from_secs(30),
         );
-        assert!(
-            o != Outcome::Verified,
-            "an over-claim must fail the validity gate (counted invalid)"
+        assert_eq!(
+            v,
+            Validity::ExecOverclaim,
+            "an over-claim must be caught as a genuine over-claim via execution (got {})",
+            v.label()
         );
+        assert!(
+            !v.is_valid(),
+            "an over-claim must not enter the valid population"
+        );
+    }
+
+    // ===== M-0012: the hybrid validity gate (verify → execution fallback) =====
+
+    /// The actual M-0011 smoke `opus-4.8` disinterested spec (the `G-0006` exhibit): a
+    /// correct, thorough reallocation contract whose `HasId(t', newId)` existential and
+    /// `<==>` characterizations are TRUE of the reference impl but NOT discharged by an
+    /// empty-body lemma (they need a witness / the `!HasId(t, newId)` precondition). Committed
+    /// verbatim (its `runs/` source is gitignored) so the regression is reproducible offline.
+    const REALLOCATE_SMOKE_OPUS_DISINTERESTED: &str = "\
+lemma Spec(t: Tree, oldId: Id, newId: Id)
+  requires oldId != newId
+  requires Valid(t)
+  requires HasId(t, oldId)
+  requires !HasId(t, newId)
+  ensures
+    var t' := Reallocate(t, oldId, newId);
+    // Structure is preserved: same length, positional correspondence.
+    && |t'| == |t|
+    // Every entity's id and refs are the pointwise rewrite of the original.
+    && (forall i :: 0 <= i < |t'| ==>
+          t'[i].id == Rw(t[i].id, oldId, newId)
+       && t'[i].refs == RwRefs(t[i].refs, oldId, newId))
+    // No orphan: oldId appears nowhere.
+    && !HasId(t', oldId)
+    && (forall i :: 0 <= i < |t'| ==> oldId !in t'[i].refs)
+    // The rename actually happened.
+    && HasId(t', newId)
+    // Uniqueness.
+    && Valid(t')
+    // Faithful rename / faithful rewrite (precision: nothing else changed).
+    && (forall i :: 0 <= i < |t'| ==>
+          (t'[i].id == newId <==> t[i].id == oldId)
+       && (forall k :: 0 <= k < |t'[i].refs| ==>
+             (t'[i].refs[k] == newId <==> t[i].refs[k] == oldId)))
+    && (forall i :: 0 <= i < |t'| ==>
+          (t[i].id != oldId ==> t'[i].id == t[i].id)
+       && (forall k :: 0 <= k < |t'[i].refs| ==>
+             (t[i].refs[k] != oldId ==> t'[i].refs[k] == t[i].refs[k])))
+{ }
+";
+
+    /// AC-1(b) + AC-3 (the `G-0006` regression): the smoke `opus-4.8` disinterested spec is
+    /// REJECTED by the empty-body verifier (so the fallback is load-bearing) yet VALID under
+    /// the hybrid gate via the execution fallback (`ExecValid`). This is the construct-validity
+    /// fix `D-0003`/`M-0012` exist for — a correct, thorough spec no longer falsely counted as
+    /// an over-claim. Also exercises a multi-line, comment-bearing `ensures` end-to-end
+    /// (extraction → conjunction → execution).
+    #[test]
+    fn reallocate_smoke_opus_disinterested_validates_via_execution() {
+        let subject = subject_by_name("reallocate").unwrap();
+        let (preamble, ref_impl, _gold) = gold_slices(subject);
+        let ensures = extract_spec_ensures(REALLOCATE_SMOKE_OPUS_DISINTERESTED)
+            .expect("the smoke opus spec has an ensures block");
+        let wd = fixture_workdir("realloc-g0006");
+        let to = Duration::from_secs(60);
+
+        // The empty-body verifier alone REJECTS it — the exact G-0006 failure the fallback fixes.
+        let vfile = wd.join("verify_only.dfy");
+        fs::write(
+            &vfile,
+            assemble(
+                &preamble,
+                &ref_impl,
+                &ensures,
+                REALLOCATE.binder,
+                REALLOCATE.requires,
+            ),
+        )
+        .unwrap();
+        assert!(
+            run_dafny(&vfile, to).0 == Outcome::Failed,
+            "the empty-body verifier must REJECT the G-0006 spec (so the execution fallback is load-bearing)"
+        );
+
+        // The hybrid gate accepts it via execution.
+        let v = validate_spec(&wd, &preamble, &ref_impl, &subject.strength, &ensures, to);
+        assert_eq!(
+            v,
+            Validity::ExecValid,
+            "the G-0006 spec must validate via the execution fallback (got {})",
+            v.label()
+        );
+        assert!(
+            v.is_valid(),
+            "the G-0006 spec must enter the valid population"
+        );
+    }
+
+    /// AC-1(d): a ghost-only spec — an unbounded quantifier over `Id` the Go backend cannot
+    /// compile — is `Unexecutable`: invalid, but a DISTINCT, surfaced category, never folded
+    /// into a genuine over-claim. (Verify rejects it as false, then it cannot be executed.)
+    #[test]
+    fn reallocate_ghost_only_spec_is_unexecutable() {
+        let subject = subject_by_name("reallocate").unwrap();
+        let (preamble, ref_impl, _gold) = gold_slices(subject);
+        let wd = fixture_workdir("realloc-ghost");
+        // Unbounded `forall x: Id` with a body that genuinely depends on x: plainly false (so
+        // verify rejects), and uncompilable — Dafny cannot synthesize a bounded range for x
+        // (so execution cannot decide it either).
+        let ghost = "  ensures forall x: Id :: x > newId";
+        let v = validate_spec(
+            &wd,
+            &preamble,
+            &ref_impl,
+            &subject.strength,
+            ghost,
+            Duration::from_secs(60),
+        );
+        assert_eq!(
+            v,
+            Validity::Unexecutable,
+            "a ghost-only spec must be Unexecutable (got {})",
+            v.label()
+        );
+        assert!(
+            !v.is_valid(),
+            "a ghost-only spec must not enter the valid population"
+        );
+    }
+
+    /// AC-2: every battery case satisfies the reallocation precondition (`oldId != newId`,
+    /// `Valid(t)`, `HasId(t, oldId)`, `!HasId(t, newId)`) — so a correct spec, which only
+    /// claims to hold under the precondition, can never be falsely rejected by an off-domain
+    /// battery tree.
+    #[test]
+    fn reallocate_battery_cases_satisfy_precondition() {
+        let subject = subject_by_name("reallocate").unwrap();
+        let (preamble, ref_impl, _gold) = gold_slices(subject);
+        let wd = fixture_workdir("realloc-battery-pre");
+        let pre = "oldId != newId && Valid(t) && HasId(t, oldId) && !HasId(t, newId)";
+        match run_battery(
+            &wd,
+            &preamble,
+            &ref_impl,
+            REALLOCATE.binder,
+            REALLOCATE_BATTERY,
+            pre,
+            Duration::from_secs(60),
+        ) {
+            BatteryRun::Ran(v) => {
+                assert_eq!(v.len(), REALLOCATE_BATTERY.len());
+                assert!(
+                    v.iter().all(|&b| b),
+                    "every battery case must satisfy the reallocation precondition: {v:?}"
+                );
+            }
+            _ => panic!("the precondition battery did not run (backend / compile failure)"),
+        }
+    }
+
+    /// AC-2: the battery covers every over-claim violation mode the mutant bank encodes —
+    /// for each mutant's broken gold clause, SOME battery tree separates the reference impl
+    /// (clause holds) from that mutant (clause violated). This bounds the testing-incompleteness
+    /// caveat `D-0003` flags: a genuine over-claim in any {R, F, C} direction is false on a
+    /// committed tree, so the execution gate catches it.
+    #[test]
+    fn reallocate_battery_distinguishes_every_violation() {
+        let subject = subject_by_name("reallocate").unwrap();
+        let (preamble, ref_impl, _gold) = gold_slices(subject);
+        let mutants = load_mutants(&root(), subject);
+        let wd = fixture_workdir("realloc-battery-distinguish");
+        let to = Duration::from_secs(60);
+        let goal_of = |k: &str| -> &'static str {
+            REALLOCATE
+                .obligations
+                .iter()
+                .find_map(|o| match o {
+                    Obligation::Single { key, goal } if *key == k => Some(*goal),
+                    _ => None,
+                })
+                .unwrap()
+        };
+        let run = |impl_src: &str, clause: &str| -> Vec<bool> {
+            match run_battery(
+                &wd,
+                &preamble,
+                impl_src,
+                REALLOCATE.binder,
+                REALLOCATE_BATTERY,
+                clause,
+                to,
+            ) {
+                BatteryRun::Ran(v) => v,
+                _ => panic!("battery did not run for clause: {clause}"),
+            }
+        };
+        // (mutant, the single gold clause it breaks) — the same isolation map the kill-rate
+        // bank is calibrated against.
+        let cases: &[(&str, &str)] = &[
+            ("m_leave_old", "target_renamed"),
+            ("m_collapse_ids", "others_unchanged"),
+            ("m_keep_refs", "refs_rewritten"),
+            ("m_partial_refs", "refs_rewritten"),
+        ];
+        for (mutant, breaks) in cases {
+            let clause = goal_of(breaks);
+            let ref_res = run(&ref_impl, clause);
+            let mut_res = run(&mutants[*mutant], clause);
+            assert!(
+                ref_res.iter().all(|&b| b),
+                "the reference impl must satisfy {breaks} on every battery tree"
+            );
+            assert!(
+                ref_res.iter().zip(&mut_res).any(|(&r, &m)| r && !m),
+                "no battery tree exposes {mutant}'s {breaks} violation (battery too weak)"
+            );
+        }
+    }
+
+    /// `ensures_to_conjunction` (pure, no Dafny): clauses become a parenthesized AND; a
+    /// multi-line clause keeps its continuation lines NEWLINE-joined so a `// comment` cannot
+    /// comment out the code that follows; an `ensures`-free block collapses to `true`.
+    #[test]
+    fn ensures_to_conjunction_splits_clauses_and_scopes_comments() {
+        // two single-line clauses → `(A ...) && (B ...)`
+        let c = ensures_to_conjunction("  ensures A\n  ensures B");
+        assert!(c.contains("(A"), "clause A parenthesized: {c}");
+        assert!(c.contains("(B"), "clause B parenthesized: {c}");
+        assert!(c.contains("&&"), "clauses AND-ed: {c}");
+
+        // a multi-line clause with a comment line: `&& Y` must survive on its own line, never
+        // merged onto the `// comment` line (which would comment it out).
+        let c2 = ensures_to_conjunction("  ensures X\n    // a comment\n    && Y");
+        assert!(c2.contains("&& Y"), "continuation kept: {c2}");
+        assert!(
+            !c2.lines()
+                .any(|l| l.contains("// a comment") && l.contains("&& Y")),
+            "the comment must not be on the same line as `&& Y`: {c2}"
+        );
+
+        // an ensures-free block (only requires / blank) → vacuous `true`
+        assert_eq!(ensures_to_conjunction("  requires foo\n"), "true");
+        // a bare `ensures` keyword with no clause (a truncated spec) also collapses to `true`
+        // — the sentinel `execute_validity` routes to `Unexecutable` rather than valid.
+        assert_eq!(ensures_to_conjunction("  ensures"), "true");
+    }
+
+    /// A subject with no execution battery never requires the Go backend (the `is_empty()`
+    /// short-circuit), so calibration / scoring of an auto-proving subject stays backend-free
+    /// and the fail-fast guard cannot fire for it — independent of toolchain presence.
+    #[test]
+    fn exec_backend_not_required_without_a_battery() {
+        assert!(!exec_backend_missing(&CANONICALIZE));
+        assert!(!exec_backend_missing(&FSM_SUBJECT));
+        assert!(!exec_backend_missing(&PROSEY_SUBJECT));
+    }
+
+    /// The `Validity` partition (pure): exactly the two proven/executed-valid variants enter
+    /// the valid population, the three invalid variants and the inconclusive one do not, and
+    /// every variant has a distinct audit label. Pins the gate's single-source `is_valid` (C1)
+    /// and the surfaced category labels (E3) without a verifier.
+    #[test]
+    fn validity_partition_and_labels_are_total() {
+        use Validity::*;
+        let all = [
+            (Provable, true, "provable"),
+            (ExecValid, true, "exec-valid"),
+            (ExecOverclaim, false, "exec-overclaim"),
+            (Unexecutable, false, "unexecutable"),
+            (VerifyReject, false, "verify-reject"),
+            (Inconclusive, false, "inconclusive"),
+        ];
+        for (v, valid, label) in all {
+            assert_eq!(v.is_valid(), valid, "{label} valid?");
+            assert_eq!(v.label(), label);
+        }
+        // labels are distinct (no two categories collapse in the audit trail)
+        let labels: std::collections::BTreeSet<_> = all.iter().map(|(_, _, l)| *l).collect();
+        assert_eq!(labels.len(), all.len());
     }
 
     // ===== M-0007: the combination rule is total and matches the pre-registration =====

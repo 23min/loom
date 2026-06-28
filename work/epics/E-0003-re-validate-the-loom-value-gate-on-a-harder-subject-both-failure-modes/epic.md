@@ -159,7 +159,13 @@ milestones are allocated; the run is planned once the prereg is authored:
   two-dimension pre-registration**: score both failure modes (under-specification +
   over-claiming), fix each threshold and the combination rule, committed before any
   run (prereg SHA an ancestor of the run). *(depends on `M-0009`)*
+- [`M-0012`](M-0012-harden-the-validity-gate-for-executable-spec-subjects.md) — **Harden
+  the validity gate**: replace empty-body `dafny verify` with a hybrid that falls back to
+  concrete-tree execution (per `D-0003`), so correct-but-not-auto-provable specs count as
+  valid and only genuine over-claims are rejected. Closes `G-0006` (surfaced by `M-0011`'s
+  smoke test); re-calibrates `M-0009`. A pre-run instrument fix; the §6 prereg is untouched.
+  *(depends on `M-0010`)*
 - [`M-0011`](M-0011-run-the-reallocate-sweep-and-record-the-terminal-decision.md) —
   **Run and decide**: execute the two-arm `reallocate` sweep (three models × two arms ×
   N = 30), apply the frozen `reallocate_verdict`, and record the terminal decision as a
-  decision entity discharging the epic. *(depends on `M-0010`)*
+  decision entity discharging the epic. *(depends on `M-0010`, `M-0012`)*
