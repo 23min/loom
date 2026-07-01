@@ -69,4 +69,5 @@ observation whether to build the thin loom-light tool.
 | Milestone | Title | Status |
 |---|---|---|
 | M-0014 | Turn the umbrella loop on the status-transition FSM | done |
+| M-0015 | Turn the loop on real string-based canonicalization | done |
 
