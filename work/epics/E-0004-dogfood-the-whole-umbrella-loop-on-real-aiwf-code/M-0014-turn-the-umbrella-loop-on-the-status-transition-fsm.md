@@ -1,7 +1,7 @@
 ---
 id: M-0014
 title: Turn the umbrella loop on the status-transition FSM
-status: in_progress
+status: done
 parent: E-0004
 tdd: advisory
 acs:
