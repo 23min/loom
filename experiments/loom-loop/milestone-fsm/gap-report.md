@@ -47,7 +47,7 @@ met may finish.
 
 The `(hasAC, allACsMet)` interface cannot perfectly express the code's real "no open AC" guard, so
 C2's no-AC counterexample is partly a modeling artifact. The impl-modeler surfaced this with
-`file:line` evidence rather than hiding it (see `umbrella.md` § Model fidelity notes).
+`file:line` evidence rather than hiding it (see `umbrella.md` § `gap` detail).
 
 ## The four observations (M-0014 / AC-4)
 

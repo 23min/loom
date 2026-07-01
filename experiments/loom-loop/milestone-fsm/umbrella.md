@@ -1,11 +1,20 @@
 # Umbrella — milestone status-transition FSM
 
-Loom loop 1 (`M-0014`, `E-0004`). The umbrella's sections, authored under the **burden split**:
-Intent + Examples by the human; Claims + back-translation by a blind umbrella-author subagent;
-Model by a blind impl-modeler subagent (from the real aiwf `transition.go` @ v0.20.0). Neither
-subagent saw the other's output — so the gap report (`gap-report.md`) is a genuine confrontation.
+Loom loop 1 (`M-0014`, `E-0004`). Structured per the documented convention — the five-register
+`.lm` umbrella (`docs/reference/language-reference.md` §4: `knows` · `relates` · `shows` · `does`
+· `proves`, plus `gap`). Authored under the **burden split**: **Intent + `shows`** by the human;
+**`proves` + back-translation** by a blind umbrella-author subagent; **`does`** by a blind
+impl-modeler subagent (from the real aiwf `transition.go` @ v0.20.0). Neither subagent saw the
+other's output — so the gap report is a genuine confrontation.
 
-## § Intent  *(human)*
+> **Surface note.** The `.lm` toolchain is not built yet (`loom-loop-poc.md` §8), so the registers
+> below are written in loom syntax **for shape** (approximating language-reference.md §4; exact
+> syntax pins when the parser lands) and are **verified via their Dafny lowering** in
+> [`milestone-fsm.dfy`](milestone-fsm.dfy). loom's semantics are preserved: the `proves` claims are
+> checked against the `does` implementation, and the failures *are* the gap report
+> ([`gap-report.md`](gap-report.md)).
+
+## Intent  *(the prose layer — above the umbrella)*
 
 A milestone is in one of four statuses — `draft`, `in_progress`, `done`, `cancelled` — starting at
 `draft`. It may go `draft → in_progress` only if it has at least one acceptance criterion (no ACs ⇒
@@ -13,84 +22,99 @@ cannot start). It may go `in_progress → done` only if all of its ACs are met (
 finish). It may be cancelled — including with no ACs, and with ACs unmet. `done` and `cancelled`
 are terminal.
 
-## § Examples  *(human — the concrete anchor)*
+## The umbrella — `module milestone_fsm`
 
-| from | to | condition | expected |
-|---|---|---|---|
-| draft | in_progress | has ACs | allowed |
-| draft | in_progress | no ACs | **denied** |
-| draft | cancelled | no ACs | allowed |
-| in_progress | done | all ACs met | allowed |
-| in_progress | done | an AC unmet | denied |
-| in_progress | cancelled | an AC unmet | allowed |
-| done | in_progress | — | denied (terminal) |
-| cancelled | in_progress | — | denied (terminal) |
+```loom
+module milestone_fsm {
 
-## § Shared interface  *(the vocabulary both blind authors bound to)*
+  knows {
+    Status :: Draft | InProgress | Done | Cancelled
+    // guard facts about a milestone:
+    //   hasAC     — has at least one acceptance criterion
+    //   allACsMet — every acceptance criterion is met
+  }
 
-```dafny
-datatype Status = Draft | InProgress | Done | Cancelled
-// hasAC     — the milestone has at least one acceptance criterion
-// allACsMet — every one of its acceptance criteria is met
-predicate Allowed(from: Status, to: Status, hasAC: bool, allACsMet: bool)
-```
+  relates {
+    // does the milestone FSM permit this transition?
+    allowed(from: Status, to: Status, hasAC: bool, allACsMet: bool) -> bool
+  }
 
-## § Claims  *(LLM umbrella-author — blind to the code)*
+  shows {                                       // the human's concrete anchor
+    has_ACs_start:       allowed(Draft, InProgress, true, true)      -> true
+    no_ACs_start:        allowed(Draft, InProgress, false, true)     -> false
+    no_ACs_cancel:       allowed(Draft, Cancelled, false, true)      -> true
+    all_met_finish:      allowed(InProgress, Done, true, true)       -> true
+    unmet_AC_finish:     allowed(InProgress, Done, true, false)      -> false
+    unmet_AC_cancel:     allowed(InProgress, Cancelled, true, false) -> true
+    done_terminal:       allowed(Done, InProgress, true, true)       -> false
+    cancelled_terminal:  allowed(Cancelled, InProgress, true, true)  -> false
+  }
 
-```dafny
-// C1: no ACs => can't start
-ensures forall m :: !Allowed(Draft, InProgress, false, m)
-// C2: not all met => can't finish
-ensures forall h :: !Allowed(InProgress, Done, h, false)
-// C3: done terminal
-ensures forall t, h, m :: !Allowed(Done, t, h, m)
-// C4: cancelled terminal
-ensures forall t, h, m :: !Allowed(Cancelled, t, h, m)
-// C5: draft always cancellable
-ensures forall h, m :: Allowed(Draft, Cancelled, h, m)
-// C6: in_progress always cancellable
-ensures forall h, m :: Allowed(InProgress, Cancelled, h, m)
-// C7: has AC => can start
-ensures forall m :: Allowed(Draft, InProgress, true, m)
-// C8: has ACs, all met => can finish
-ensures Allowed(InProgress, Done, true, true)
-```
+  does {                                        // the real code, as modeled (transition.go @ v0.20.0)
+    allowed(from: Status, to: Status, hasAC: bool, allACsMet: bool) -> bool {
+      (from = Draft      and to = InProgress)                        or   // transition.go:24
+      (from = Draft      and to = Cancelled)                         or   // transition.go:24
+      (from = InProgress and to = Cancelled)                         or   // transition.go:25
+      (from = InProgress and to = Done and (not hasAC or allACsMet))      // transition.go:25 + AC guard
+    }
+  }
 
-## § Back-translation  *(LLM — audited by the human against Intent)*
+  proves {                                      // the human's intent, formalized
+    c1_no_ACs_no_start:
+      for-all m: bool, not allowed(Draft, InProgress, false, m)
+    c2_unmet_no_finish:
+      for-all h: bool, not allowed(InProgress, Done, h, false)
+    c3_done_terminal:
+      for-all t: Status, h: bool, m: bool, not allowed(Done, t, h, m)
+    c4_cancelled_terminal:
+      for-all t: Status, h: bool, m: bool, not allowed(Cancelled, t, h, m)
+    c5_draft_cancellable:
+      for-all h: bool, m: bool, allowed(Draft, Cancelled, h, m)
+    c6_inprogress_cancellable:
+      for-all h: bool, m: bool, allowed(InProgress, Cancelled, h, m)
+    c7_has_AC_can_start:
+      for-all m: bool, allowed(Draft, InProgress, true, m)
+    c8_all_met_can_finish:
+      allowed(InProgress, Done, true, true)
+  }
 
-1. A draft with **no** AC is never allowed to move to in_progress.
-2. An in_progress milestone is never allowed to move to done while **not all** ACs are met.
-3. Nothing ever leaves **done** (terminal).
-4. Nothing ever leaves **cancelled** (terminal).
-5. A **draft** may always be cancelled, whatever its ACs.
-6. An **in_progress** milestone may always be cancelled, whatever its ACs.
-7. A draft that **has** an AC may move to in_progress.
-8. An in_progress milestone with **all** ACs met may move to done.
-
-## § Model  *(LLM impl-modeler — blind to the claims; from `transition.go` @ v0.20.0)*
-
-```dafny
-predicate Allowed(from: Status, to: Status, hasAC: bool, allACsMet: bool)
-{
-  (from == Draft      && to == InProgress)                      ||  // transition.go:24
-  (from == Draft      && to == Cancelled)                       ||  // transition.go:24
-  (from == InProgress && to == Cancelled)                       ||  // transition.go:25
-  (from == InProgress && to == Done && (!hasAC || allACsMet))       // transition.go:25 + AC guard
+  gap {                                         // admitted limitations (detail below)
+    ac_done_guard_is_no_open_not_all_met
+    cancel_verb_differs_from_promote_cancelled
+  }
 }
 ```
 
-### Model fidelity notes — where `(hasAC, allACsMet)` is lossy vs the real code
+## Back-translation  *(the `summarize` op — audit aid for `proves`)*
 
-- **The done-guard is "no *open* AC", not "all *met*".** ACs that are `deferred` or `cancelled`
-  (not `met`) still let a milestone finish (`MilestoneCanGoDone`, `transition.go:265-275`; the
-  standing check `milestone-done-incomplete-acs`, `acs.go:303-339`). Forced onto `allACsMet`, the
-  model is *stricter* than the code on the deferred/cancelled case.
-- **The done AC-guard rides in via a check-projection, not the FSM table.** `ValidateTransition`
-  (`transition.go:79-94`) is pure table lookup with no AC check; the AC precondition is a
-  `SeverityError` finding run in `projectionFindings` (`promote.go:171`).
-- **`--force` relaxes FSM *direction* but not the AC gate** (`promote.go:92`, projection runs
-  regardless of force).
-- **Two cancel paths differ:** `aiwf promote M cancelled` allows cancel with any AC state (what the
-  model encodes); `aiwf cancel M` blocks on an `open` AC (`promote.go:246-253`).
-- **No sovereign / tdd-phase gate on milestone edges** (sovereign shapes are epic-only,
-  `sovereign.go:39-46`; tdd-phase governs ACs not milestone status).
+Each `proves` claim restated in plain English, so the intent can be audited without reading the
+formal form:
+
+1. **c1** — a draft with **no** AC is never allowed to start (go in_progress).
+2. **c2** — an in_progress milestone is never allowed to finish while **not all** ACs are met.
+3. **c3** — nothing ever leaves **done**.
+4. **c4** — nothing ever leaves **cancelled**.
+5. **c5** — a **draft** may always be cancelled.
+6. **c6** — an **in_progress** milestone may always be cancelled.
+7. **c7** — a draft that **has** an AC may start.
+8. **c8** — an in_progress milestone with **all** ACs met may finish.
+
+## `gap` detail  *(fidelity of the `does` model vs the real code)*
+
+- **`ac_done_guard_is_no_open_not_all_met`** — the code's real done-guard is "no *open* AC," not
+  "all *met*": a `deferred`/`cancelled` AC still lets a milestone finish (`MilestoneCanGoDone`,
+  `transition.go:265-275`; standing check `milestone-done-incomplete-acs`, `acs.go:303-339`). The
+  `(hasAC, allACsMet)` vocabulary can't express this, so the `does` model is *stricter* than the
+  code on that case, and c2's no-AC counterexample is partly a modeling artifact.
+- **`cancel_verb_differs_from_promote_cancelled`** — `aiwf promote M cancelled` allows cancel in any
+  AC state (what `does` encodes, so c5/c6 verify), but `aiwf cancel M` **blocks** cancelling an
+  `open`-AC milestone (`promote.go:246-253`) — refuting c6 on that surface.
+- Also: `--force` relaxes the FSM *direction* rule but not the AC gate; no sovereign / tdd-phase
+  gate applies to milestone edges (sovereign shapes are epic-only, `sovereign.go:39-46`).
+
+## Verification
+
+`proves` checked against `does` (loom's core operation) via the Dafny lowering
+[`milestone-fsm.dfy`](milestone-fsm.dfy): **6 verified, 3 errors** — `c1`, `c2`, and the `shows`
+check at `no_ACs_start` fail. That is the gap report ([`gap-report.md`](gap-report.md)): the code
+does **not** enforce `c1` (a milestone can start with no ACs — confirmed against the live binary).
