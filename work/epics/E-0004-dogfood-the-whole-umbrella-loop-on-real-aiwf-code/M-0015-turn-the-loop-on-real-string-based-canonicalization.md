@@ -13,6 +13,9 @@ acs:
     - id: AC-2
       title: Real string canonicalize modeled and cross-checked
       status: open
+    - id: AC-3
+      title: Loop turned across the ladder; tractability recorded
+      status: open
 ---
 ## Goal
 
@@ -54,7 +57,7 @@ that barrier is characterized precisely (it is a first-class result). Where a mo
 **Evidence.** The committed model (or the characterized modeling barrier) + the Go cross-check
 result on the rung's examples.
 
-### AC-3 — The loop is turned across the ladder and the tractability result is recorded per rung
+### AC-3 — Loop turned across the ladder; tractability recorded
 
 The loop is turned rung by rung — (1) single format, no composite (e.g. `E-7 → E-0007`); (2) six
 formats + per-kind widths; (3) composite recursion — stopping at the first rung that breaks. For
