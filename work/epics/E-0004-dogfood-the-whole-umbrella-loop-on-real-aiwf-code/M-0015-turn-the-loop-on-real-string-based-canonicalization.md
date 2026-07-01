@@ -9,7 +9,7 @@ tdd: advisory
 acs:
     - id: AC-1
       title: Canonicalize umbrella authored under the burden split
-      status: open
+      status: met
     - id: AC-2
       title: Real string canonicalize modeled and cross-checked
       status: open
