@@ -12,7 +12,7 @@ acs:
       status: met
     - id: AC-2
       title: Real string canonicalize modeled and cross-checked
-      status: open
+      status: met
     - id: AC-3
       title: Loop turned across the ladder; tractability recorded
       status: open
