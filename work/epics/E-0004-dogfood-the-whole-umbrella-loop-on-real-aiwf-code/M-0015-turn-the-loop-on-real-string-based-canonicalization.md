@@ -10,6 +10,9 @@ acs:
     - id: AC-1
       title: Canonicalize umbrella authored under the burden split
       status: open
+    - id: AC-2
+      title: Real string canonicalize modeled and cross-checked
+      status: open
 ---
 ## Goal
 
@@ -41,7 +44,7 @@ by blind subagents (neither seeing the other). The human never authors the forma
 **Evidence.** The committed umbrella artifact in the register shape; claims consistent with the
 examples.
 
-### AC-2 — The real string-based canonicalize is modeled in Dafny (or the modeling barrier characterized), cross-checked
+### AC-2 — Real string canonicalize modeled and cross-checked
 
 The impl-modeler produces a Dafny `does` model of the real string-level canonicalize logic for the
 rung under test — **or**, if faithfully modeling string parsing in Dafny is itself infeasible,
