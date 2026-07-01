@@ -16,6 +16,9 @@ acs:
     - id: AC-3
       title: Loop turned across the ladder; tractability recorded
       status: open
+    - id: AC-4
+      title: Four observations recorded, tractability the headline
+      status: open
 ---
 ## Goal
 
@@ -67,7 +70,7 @@ timeouts / could-not-model, with *where* it broke) are recorded.
 **Evidence.** The committed per-rung gap report(s) and the recorded tractability verdict naming the
 rung and cause where verification (or modeling) breaks, or that it held through rung 3.
 
-### AC-4 — The four observations are recorded, with tractability as the headline
+### AC-4 — Four observations recorded, tractability the headline
 
 The four observations (tractability, faithfulness, value, effort) are written up. **Tractability is
 the headline finding** — the precise point where Dafny/Z3 (or the modeling step) stops coping, on
