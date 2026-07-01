@@ -125,3 +125,58 @@ terminal decision.
 
 - First milestone of `E-0004`; no milestone dependencies. Reference design:
   [`docs/loom-loop-poc.md`](../../../docs/loom-loop-poc.md).
+
+## Work log
+
+The whole loop turned once, end-to-end, on the real milestone FSM. Artifacts under
+`experiments/loom-loop/milestone-fsm/` (umbrella, verifiable `.dfy`, gap report).
+
+- **AC-1** — umbrella authored under the burden split: human Intent + Examples; a blind
+  umbrella-author subagent wrote the Claims + back-translation; claims consistent with the
+  examples. · `umbrella.md` · commit `fece1b4`
+- **AC-2** — the real `transition.go` @ v0.20.0 modeled by a blind impl-modeler subagent;
+  fidelity cross-checked three ways — `file:line` source evidence, the examples check, and a
+  behavioral probe (a throwaway no-AC milestone promoted to `in_progress` on the live binary,
+  then reset away). · commit `fece1b4`
+- **AC-3** — the loop closed: `dafny verify` over model + claims produced the A/B/C gap report
+  (**6 verified, 3 errors**), reproducible from the committed `.dfy` (G1). · `milestone-fsm.dfy`,
+  `gap-report.md` · commit `fece1b4`
+- **AC-4** — the four observations (tractability, faithfulness, value, effort) recorded. ·
+  `gap-report.md` · commit `fece1b4`
+
+## Decisions made during implementation
+
+- No decision entity. The loop ran on the interactive / no-metered-API strategy recorded in the
+  Design notes (blind in-session subagents author; local verifier).
+- The headline result is a **finding about aiwf**, not a loom decision: aiwf permits a no-AC
+  milestone → `in_progress` (candidate aiwf gap — see Deferrals).
+
+## Validation
+
+- `dafny verify experiments/loom-loop/milestone-fsm/milestone-fsm.dfy` → **6 verified, 3 errors**
+  (C1, C2, and Examples-at-ex2), reproducible (G1).
+- **C1 behaviorally confirmed** against real aiwf v0.20.0: promoting a no-AC milestone to
+  `in_progress` succeeded (throwaway, reset away).
+- `aiwf check`: 0 errors.
+- **Independent fresh-context review: SOUND**, no blocking issues (see Reviewer notes).
+
+## Deferrals
+
+- **Candidate aiwf gap** (not a loom gap; aiwf is a separate repo): "a milestone can be promoted to
+  `in_progress` with no acceptance criteria." Triple-confirmed by this loop; to be raised against
+  aiwf if the operator judges it unintended. Recorded in `gap-report.md` Follow-ups.
+
+## Reviewer notes
+
+- **Independent adversarial review (fresh-context)** re-ran the verifier and traced `transition.go`
+  at four layers (FSM table, `ValidateTransition`, the projection gate, the CLI) — verdict
+  **SOUND**, the no-AC-start finding is **real, not a modeling artifact**, no blocking issues.
+- The review surfaced a refinement now folded into `gap-report.md`: the two cancel surfaces diverge
+  — `aiwf cancel M` (the cancel verb) *blocks* cancelling an open-AC milestone
+  (`promote.go:246-253`), so the intent's "cancellable with ACs unmet" (C6) is refuted on that
+  surface; C5/C6 verified only because the model took the more-permissive `promote cancelled` path.
+  A second, smaller intent-vs-code gap.
+- Model fidelity — the `(hasAC, allACsMet)` interface's lossiness vs the code's real "no open AC"
+  guard — is disclosed in `umbrella.md` and `gap-report.md`, not hidden.
+- This is a `tdd: advisory` feasibility milestone: the ACs are observational / loop-mechanical, so
+  no red→green TDD cycle applies; evidence is the committed artifacts + the verifier + the review.
