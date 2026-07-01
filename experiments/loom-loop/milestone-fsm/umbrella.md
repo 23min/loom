@@ -83,7 +83,7 @@ predicate Allowed(from: Status, to: Status, hasAC: bool, allACsMet: bool)
 
 - **The done-guard is "no *open* AC", not "all *met*".** ACs that are `deferred` or `cancelled`
   (not `met`) still let a milestone finish (`MilestoneCanGoDone`, `transition.go:265-275`; the
-  standing check `milestone-done-incomplete-acs`, `acs.go:316-330`). Forced onto `allACsMet`, the
+  standing check `milestone-done-incomplete-acs`, `acs.go:303-339`). Forced onto `allACsMet`, the
   model is *stricter* than the code on the deferred/cancelled case.
 - **The done AC-guard rides in via a check-projection, not the FSM table.** `ValidateTransition`
   (`transition.go:79-94`) is pure table lookup with no AC check; the AC precondition is a

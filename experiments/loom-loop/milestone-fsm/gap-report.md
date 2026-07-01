@@ -37,7 +37,11 @@ met may finish.
 - **"All met" is really "no *open* AC"** — a `deferred`/`cancelled` AC (not `met`) still lets a
   milestone finish.
 - **`--force` relaxes direction but not the AC gate.**
-- **`aiwf promote M cancelled` vs `aiwf cancel M`** enforce different AC guards on the cancel edge.
+- **The two cancel surfaces diverge — and one *refutes* the intent.** `aiwf promote M cancelled`
+  allows cancel with any AC state (what the model encodes, so C5/C6 verified). But `aiwf cancel M`
+  (the cancel *verb*) **blocks** cancelling a milestone with an `open` AC (`promote.go:246-253`) —
+  so the operator's "cancellable with ACs unmet" is **false on that surface**. A second, smaller
+  intent-vs-code gap the single-surface model masked (surfaced by the independent review).
 
 ## Fidelity (honesty about the model)
 
