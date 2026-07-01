@@ -57,7 +57,7 @@ modes, not just one.
 | M-0012 | Harden the validity gate for executable-spec subjects | done |
 | M-0013 | Harden the spec extractor for complex executable specs | done |
 
-## E-0004 — Dogfood the whole umbrella loop on real aiwf code (proposed)
+## E-0004 — Dogfood the whole umbrella loop on real aiwf code (active)
 
 ### Goal
 
@@ -68,5 +68,5 @@ observation whether to build the thin loom-light tool.
 
 | Milestone | Title | Status |
 |---|---|---|
-| M-0014 | Turn the umbrella loop on the status-transition FSM | draft |
+| M-0014 | Turn the umbrella loop on the status-transition FSM | done |
 
