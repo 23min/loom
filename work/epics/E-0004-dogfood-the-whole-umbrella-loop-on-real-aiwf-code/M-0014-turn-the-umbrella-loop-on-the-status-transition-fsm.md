@@ -10,7 +10,7 @@ acs:
       status: met
     - id: AC-2
       title: The transition logic is modeled in Dafny and cross-checked for fidelity
-      status: open
+      status: met
     - id: AC-3
       title: 'The loop closes: a gap report is produced and recorded'
       status: open
