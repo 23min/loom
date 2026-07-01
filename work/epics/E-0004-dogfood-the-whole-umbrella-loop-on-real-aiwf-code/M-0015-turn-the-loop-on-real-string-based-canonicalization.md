@@ -18,7 +18,7 @@ acs:
       status: met
     - id: AC-4
       title: Four observations recorded, tractability the headline
-      status: open
+      status: met
 ---
 ## Goal
 
