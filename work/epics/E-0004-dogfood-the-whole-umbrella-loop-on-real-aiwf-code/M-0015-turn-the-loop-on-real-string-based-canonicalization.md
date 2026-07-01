@@ -1,7 +1,7 @@
 ---
 id: M-0015
 title: Turn the loop on real string-based canonicalization
-status: in_progress
+status: done
 parent: E-0004
 depends_on:
     - M-0014
