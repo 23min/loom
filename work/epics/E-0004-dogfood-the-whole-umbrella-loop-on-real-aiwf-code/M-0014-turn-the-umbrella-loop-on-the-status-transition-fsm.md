@@ -16,7 +16,7 @@ acs:
       status: met
     - id: AC-4
       title: The four observations are recorded
-      status: open
+      status: met
 ---
 ## Goal
 
