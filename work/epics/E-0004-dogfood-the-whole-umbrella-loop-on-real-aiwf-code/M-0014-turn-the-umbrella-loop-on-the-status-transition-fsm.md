@@ -103,6 +103,15 @@ terminal decision.
   is a predicate `allowed(from, to, guards)`, with the umbrella's claims as `ensures` about it.
 - The examples double as the fidelity oracle for both the claims (AC-1) and the model (AC-2) —
   the non-expert's anchor from below.
+- **No metered API; the loop turns interactively via blind subagents.** The formal umbrella
+  (Claims + back-translation) and the Dafny impl model are authored by fresh-context assistant
+  subagents, not by a batch harness against a metered API key: the **umbrella-author** sees only
+  the human's Intent + Examples (blind to the impl); the **impl-modeler** sees only the real
+  `transition.go` (blind to the claims). Their isolation enforces the loom blinding — spec-author
+  blind to impl, impl-modeler blind to claims — so the gap report is a genuine confrontation, not
+  one hand harmonizing both sides. The verifier (Dafny + Z3) and the Go cross-check run locally
+  and free. Independent/blinded authoring *at scale* and the metered batch API belong to the
+  deferred confirmatory epic, not here.
 
 ## Out of scope
 
