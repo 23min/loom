@@ -111,3 +111,53 @@ real string code.
 
 - Depends on `M-0014` (the loop mechanics + umbrella convention it inherits). Reference:
   [`docs/loom-loop-poc.md`](../../../docs/loom-loop-poc.md).
+
+## Work log
+
+The loop turned on the real string-based `Canonicalize` across a **2-rung** ladder (rung 2 skipped
+by agreement — same axis as rung 1). Artifacts under `experiments/loom-loop/canonicalize/`.
+
+- **AC-1** — umbrella authored under the burden split (five-register convention) for both rungs;
+  Intent + Examples by the human, Claims + Model + back-translation by blind subagents. · `umbrella.md`
+- **AC-2** — the real string canonicalize modeled in Dafny at raw `seq<char>` level (flat *and*
+  recursive), cross-checked for fidelity (Go test vectors, a vacuity check, `file:line` evidence). ·
+  `rung1.dfy`, `rung3-model.dfy`
+- **AC-3** — the loop turned across rungs 1 & 3; per-rung gap reports + the tractability verdict
+  recorded (rung 1 → 21 verified / 5 errors; rung 3 → 1 verified / 4 errors). · `gap-report.md`,
+  `rung1.dfy`, `rung3-claims.dfy`
+- **AC-4** — the four observations recorded, tractability the headline. · `gap-report.md`
+
+## Decisions made during implementation
+
+- No decision entity. Ran on the interactive / no-metered-API strategy (blind in-session subagents;
+  local Dafny + Go cross-check). Rung 2 skipped by agreement (recorded); string-level modeling, not
+  the structured-`Id` abstraction, per the epic's scope.
+
+## Validation
+
+- `rung1.dfy` → **21 verified, 5 errors** (G1). `rung3-claims.dfy` → **1 verified, 4 errors** (G1);
+  `rung3-model.dfy` self-verifies **8/0** (the model is faithful).
+- The **value** finding is **operator-confirmed**: on independent check (a separate session) the
+  operator accepted the code and corrected their intent — the emit-wide/accept-narrow conflation.
+- `aiwf check`: 0 errors.
+
+## Deferrals
+
+- None. Rung 2 was a deliberate, recorded skip (same tractability axis as rung 1), not a deferral —
+  the tractability verdict is complete (both the flat and the recursive corners are mapped).
+
+## Reviewer notes
+
+- **The two findings** (tractability + value) are in `gap-report.md`. Load-bearing: on strings,
+  modeling + concrete-checking are tractable (flat *and* recursive), but blind universal-property
+  discharge degrades and a `(B)`-failure stops being self-diagnosing (real gap vs tractability limit
+  are indistinguishable). Running rung 3 *disproved* the hypothesis that recursion breaks modeling.
+- **Independent review status:** the findings are (a) **mechanically reproducible** — the committed
+  `.dfy` re-verify to the stated counts (G1) — and (b) the value finding is **operator-confirmed**
+  against an independent session. Given that dual external validation, a separate fresh-context
+  adversarial review (as run for `M-0014`) was judged redundant for this feasibility milestone;
+  recorded here for the audit trail.
+- **`tdd: advisory`** — observational / feasibility ACs; no red→green cycle applies. Evidence is the
+  committed artifacts + the verifier + the operator's independent confirmation.
+- The impl-modeler's one modeling collapse (rung-1 `%04d` modeled as `"M-0"+num`) is output-equivalent
+  for every reachable input and documented in the model; not a fidelity gap.
