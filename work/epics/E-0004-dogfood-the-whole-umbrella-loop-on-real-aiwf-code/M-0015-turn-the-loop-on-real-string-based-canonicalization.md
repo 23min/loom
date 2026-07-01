@@ -8,7 +8,7 @@ depends_on:
 tdd: advisory
 acs:
     - id: AC-1
-      title: The four observations are recorded, with tractability as the headline
+      title: Canonicalize umbrella authored under the burden split
       status: open
 ---
 ## Goal
@@ -32,7 +32,7 @@ established in `M-0014`.
 
 ## Acceptance criteria
 
-### AC-1 — The canonicalize umbrella is authored under the burden split (five-register convention)
+### AC-1 — Canonicalize umbrella authored under the burden split
 
 The umbrella follows the five-register `.lm` convention (`knows`/`relates`/`shows`/`does`/`proves`/
 `gap`): **Intent + `shows`** by the human; **`proves` + back-translation** and the **`does`** model
