@@ -13,7 +13,7 @@ acs:
       status: met
     - id: AC-3
       title: 'The loop closes: a gap report is produced and recorded'
-      status: open
+      status: met
     - id: AC-4
       title: The four observations are recorded
       status: open
