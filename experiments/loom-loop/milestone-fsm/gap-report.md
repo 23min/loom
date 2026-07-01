@@ -7,6 +7,10 @@ Loom loop 1 · `M-0014` / `E-0004` · **the audit trail (E3) of one whole-loop t
 - **Claims:** the human's Intent + Examples ([`umbrella.md`](umbrella.md), umbrella-author subagent, blind to the code)
 - **Verifier result:** `6 verified, 3 errors` · **Examples matched: 7 / 8**
 
+Authored under the **burden split** — the human wrote Intent + Examples; two blind subagents wrote
+the formal Claims (`proves`) and the Model (`does`), neither seeing the other's output, so this
+report is a genuine confrontation, not one hand harmonizing both sides.
+
 ## (A) Claimed and proved — intent matches the code
 
 C3 `done` terminal · C4 `cancelled` terminal · C5 draft always cancellable · C6 in_progress
