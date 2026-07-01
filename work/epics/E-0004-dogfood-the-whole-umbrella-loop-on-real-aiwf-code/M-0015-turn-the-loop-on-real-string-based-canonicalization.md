@@ -15,7 +15,7 @@ acs:
       status: met
     - id: AC-3
       title: Loop turned across the ladder; tractability recorded
-      status: open
+      status: met
     - id: AC-4
       title: Four observations recorded, tractability the headline
       status: open
