@@ -10,7 +10,7 @@ cannot start). It may go `in_progress → done` only if all of its ACs are met (
 finish). It may be cancelled — including with no ACs, and with ACs unmet. `done` and `cancelled`
 are terminal.
 
-## Umbrella — `module milestone_fsm`
+## Formal spine — `module milestone_fsm`
 
 ```loom
 module milestone_fsm {
@@ -65,7 +65,9 @@ module milestone_fsm {
 
 ## Back-translation
 
-Each `proves` claim in plain English, so the intent can be audited against the formal form:
+The **LLM's** plain-English restatement of each `proves` claim (loom's `summarize` op). Read it
+against **Intent** above to check the LLM formalized faithfully — that comparison is the loop's
+trust check (a divergence here means the formal claim doesn't say what you meant):
 
 1. **c1** — a draft with **no** AC is never allowed to start.
 2. **c2** — an in_progress milestone is never allowed to finish while **not all** ACs are met.
