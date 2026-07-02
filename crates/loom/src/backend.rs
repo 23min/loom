@@ -2,11 +2,13 @@
 //!
 //! Routing is total *by construction*: [`dispatch`] is an exhaustive match over [`Substrate`],
 //! so adding a substrate without a backend is a compile error — nothing is silently unverified.
-//! [`run`] executes the routed backend. The Dafny backend shells out to `dafny verify` with the
-//! property directory as the working directory (so error locations are relative and reproducible,
-//! G1) under a wall-clock timeout (Z3 nondeterminism is isolated — a hang becomes an `error`
-//! verdict, never a hung runner). The pure output→verdict mapping ([`interpret_dafny_output`]) is
-//! unit-tested with canned output and needs no Dafny.
+//! [`run`] executes the routed backend. Two backends exist: Dafny + Z3 (deductive) and TLA+/TLC
+//! (explicit-state model checking, the M-0018 second substrate). Each shells out to its tool with
+//! the property directory as the working directory (so locations are relative and reproducible,
+//! G1) via the shared [`run_under_timeout`] skeleton — the single home of the wall-clock ceiling
+//! that isolates each verifier's nondeterminism (a hang becomes an `error`, never a hung runner or
+//! a false verdict). The pure output→verdict mappings ([`interpret_dafny_output`],
+//! [`interpret_tlc_output`]) are unit-tested with canned output and need no toolchain.
 
 use crate::report::{Gap, Substrate, Verdict};
 use std::io::Read;
@@ -15,18 +17,26 @@ use std::process::{Command, Stdio};
 use std::time::Duration;
 use wait_timeout::ChildExt;
 
-/// The per-property lowering file the backend verifies (Contract 3 — an attached artifact).
+/// The per-property lowering file the Dafny backend verifies (Contract 3 — an attached artifact).
 pub(crate) const MODEL_FILE: &str = "model.dfy";
 
-/// Wall-clock ceiling on a single verification. A hang past this is surfaced as `error`, not a
-/// hung runner (G1 — the verifier's nondeterminism is isolated and reported, never folded in).
-pub(crate) const DAFNY_TIMEOUT: Duration = Duration::from_secs(120);
+/// The per-property TLA+ module the TLC backend checks, and its model config. TLC finds the
+/// `.cfg` by the module's base name automatically.
+pub(crate) const TLA_MODEL_FILE: &str = "model.tla";
+pub(crate) const TLA_CONFIG_FILE: &str = "model.cfg";
+
+/// Wall-clock ceiling on a single verification, applied to every backend. A hang past this is
+/// surfaced as `error`, not a hung runner (G1 — the verifier's nondeterminism is isolated and
+/// reported, never folded in).
+pub(crate) const VERIFY_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// The verification engine responsible for a substrate.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Backend {
-    /// Dafny + Z3.
+    /// Dafny + Z3 (deductive verification).
     Dafny,
+    /// TLA+ / TLC (explicit-state model checking) — the M-0018 second substrate.
+    Tlc,
 }
 
 impl Backend {
@@ -34,6 +44,16 @@ impl Backend {
     pub(crate) fn name(self) -> &'static str {
         match self {
             Backend::Dafny => "dafny",
+            Backend::Tlc => "tlc",
+        }
+    }
+
+    /// The property-dir artifacts this backend reads, recorded in the report's audit trail so a
+    /// verdict names the exact inputs it saw (E3). Order-stable (G1).
+    pub(crate) fn inputs(self) -> &'static [&'static str] {
+        match self {
+            Backend::Dafny => &[MODEL_FILE],
+            Backend::Tlc => &[TLA_MODEL_FILE, TLA_CONFIG_FILE],
         }
     }
 }
@@ -43,6 +63,7 @@ impl Backend {
 pub(crate) fn dispatch(substrate: Substrate) -> Backend {
     match substrate {
         Substrate::Dafny => Backend::Dafny,
+        Substrate::Tla => Backend::Tlc,
     }
 }
 
@@ -54,10 +75,11 @@ pub(crate) struct BackendOutcome {
     pub rationale: String,
 }
 
-/// Run the routed backend over the property directory (which holds the [`MODEL_FILE`] lowering).
+/// Run the routed backend over the property directory (which holds the backend's artifact).
 pub(crate) fn run(backend: Backend, prop_dir: &Path, timeout: Duration) -> BackendOutcome {
     match backend {
         Backend::Dafny => run_dafny(prop_dir, timeout),
+        Backend::Tlc => run_tlc(prop_dir, timeout),
     }
 }
 
@@ -69,24 +91,26 @@ fn error_outcome(reason: String) -> BackendOutcome {
     }
 }
 
-fn run_dafny(prop_dir: &Path, timeout: Duration) -> BackendOutcome {
-    if !prop_dir.join(MODEL_FILE).is_file() {
-        return error_outcome(format!("lowering {MODEL_FILE} not found"));
-    }
-    // Working directory = the property dir, so `dafny` prints locations relative to MODEL_FILE
-    // (no absolute/temp paths leak into the report — G1 reproducibility).
-    let mut child = match Command::new("dafny")
-        .arg("verify")
-        .arg(MODEL_FILE)
-        .current_dir(prop_dir)
+/// Run a verifier subprocess under a wall-clock ceiling, isolating its nondeterminism (G1). The
+/// single home of the timeout protocol every backend shares: a completed run's combined
+/// stdout+stderr is handed to `interpret`; a hang past `timeout` is killed and surfaced as `error`
+/// (never a hung runner, never a false verdict); a spawn or wait failure is likewise `error`.
+/// `engine` names the tool in these operator-facing messages. The caller sets the command's args
+/// and working directory; stdio piping is set here.
+fn run_under_timeout(
+    mut command: Command,
+    timeout: Duration,
+    engine: &str,
+    interpret: fn(&str) -> BackendOutcome,
+) -> BackendOutcome {
+    let mut child = match command
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
     {
         Ok(child) => child,
-        Err(e) => return error_outcome(format!("could not launch dafny: {e}")),
+        Err(e) => return error_outcome(format!("could not launch {engine}: {e}")),
     };
-
     match child.wait_timeout(timeout) {
         Ok(Some(_status)) => {
             let mut out = String::new();
@@ -96,18 +120,29 @@ fn run_dafny(prop_dir: &Path, timeout: Duration) -> BackendOutcome {
             if let Some(mut stderr) = child.stderr.take() {
                 let _ = stderr.read_to_string(&mut out);
             }
-            interpret_dafny_output(&out)
+            interpret(&out)
         }
         Ok(None) => {
             let _ = child.kill();
             let _ = child.wait();
             error_outcome(format!(
-                "dafny verification exceeded {}s — Z3 nondeterminism isolated",
+                "{engine} exceeded {}s — the verifier's nondeterminism isolated",
                 timeout.as_secs()
             ))
         }
-        Err(e) => error_outcome(format!("waiting on dafny failed: {e}")),
+        Err(e) => error_outcome(format!("waiting on {engine} failed: {e}")),
     }
+}
+
+fn run_dafny(prop_dir: &Path, timeout: Duration) -> BackendOutcome {
+    if !prop_dir.join(MODEL_FILE).is_file() {
+        return error_outcome(format!("lowering {MODEL_FILE} not found"));
+    }
+    // Working directory = the property dir, so `dafny` prints locations relative to MODEL_FILE
+    // (no absolute/temp paths leak into the report — G1 reproducibility).
+    let mut command = Command::new("dafny");
+    command.arg("verify").arg(MODEL_FILE).current_dir(prop_dir);
+    run_under_timeout(command, timeout, "dafny", interpret_dafny_output)
 }
 
 /// Map Dafny's output to a verdict. Pure — the seam that lets the mapping be tested with canned
@@ -211,6 +246,101 @@ fn extract_error_lines(output: &str) -> String {
     lines.join("\n")
 }
 
+/// Disambiguates concurrent TLC metadirs so parallel/repeated runs never collide (TLC otherwise
+/// names its states dir by wall-clock time and aborts on a same-second re-run — which would break
+/// reproducibility). Not part of any report's content (G1).
+static TLC_METADIR_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+fn run_tlc(prop_dir: &Path, timeout: Duration) -> BackendOutcome {
+    if !prop_dir.join(TLA_MODEL_FILE).is_file() {
+        return error_outcome(format!("lowering {TLA_MODEL_FILE} not found"));
+    }
+    // TLC writes a states/ metadir; direct it OUT of the property dir (so the overlay stays clean)
+    // and make it unique per run (so a same-second re-run does not collide — reproducibility).
+    let n = TLC_METADIR_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let metadir = std::env::temp_dir().join(format!("loom-tlc-{}-{}", std::process::id(), n));
+
+    // Working directory = the property dir, so TLC prints locations relative to the module and
+    // finds `model.cfg` by the module base name. `-workers 1` pins state counts for reproducible
+    // output (G1 — the model checker's nondeterminism is isolated, not folded into a result).
+    let mut command = Command::new("tlc");
+    command
+        .arg("-workers")
+        .arg("1")
+        .arg("-metadir")
+        .arg(&metadir)
+        .arg(TLA_MODEL_FILE)
+        .current_dir(prop_dir);
+    let outcome = run_under_timeout(command, timeout, "tlc", interpret_tlc_output);
+    let _ = std::fs::remove_dir_all(&metadir);
+    outcome
+}
+
+/// Does the output report a property violation (invariant or temporal)? Either shape is a
+/// refutation carrying a counterexample.
+fn tlc_reports_violation(output: &str) -> bool {
+    output.contains("is violated") || output.contains("Temporal properties were violated")
+}
+
+/// Map TLC's output to a verdict. Pure — the seam that lets the mapping be tested with canned
+/// output. Total: `proved` only on the explicit "no error" completion sentinel; a property
+/// violation is `refuted` with a category-(B) gap carrying the counterexample trace; anything
+/// else — a parse/semantic failure, an unexpected deadlock, an exhausted or killed run, an
+/// unrecognized dump — is `error`. A "gave up" outcome is never laundered into a proof (G1).
+fn interpret_tlc_output(output: &str) -> BackendOutcome {
+    // A completed check with no error is the only path to `proved`.
+    if output.contains("Model checking completed. No error has been found.") {
+        return BackendOutcome {
+            verdict: Verdict::Proved,
+            gaps: Vec::new(),
+            rationale: "tlc explored the full reachable state space with no violation".to_string(),
+        };
+    }
+
+    if tlc_reports_violation(output) {
+        return BackendOutcome {
+            verdict: Verdict::Refuted,
+            gaps: vec![Gap {
+                code: "B".to_string(),
+                summary: "model checker found a state violating the umbrella claim".to_string(),
+                detail: Some(extract_tlc_trace(output)),
+            }],
+            rationale: "tlc found a counterexample; the claim does not hold".to_string(),
+        };
+    }
+
+    // No success sentinel and no violation: TLC failed to decide (parse/semantic error, an
+    // unexpected deadlock, a killed/exhausted run, or a runtime exception). Surface as `error` so
+    // the nondeterminism/failure stays visible rather than becoming a false `proved`.
+    error_outcome(
+        "tlc produced no completion result — the checker did not decide, not a proof".to_string(),
+    )
+}
+
+/// The counterexample region of a violated run: the violation line and the state trace, stopping
+/// before the run's statistics. Deterministic under `-workers 1` (G1).
+fn extract_tlc_trace(output: &str) -> String {
+    let mut trace = Vec::new();
+    let mut in_trace = false;
+    for line in output.lines() {
+        if !in_trace && tlc_reports_violation(line) {
+            in_trace = true;
+        }
+        if in_trace {
+            // The per-run statistics follow the trace; stop before them so the detail is just the
+            // counterexample (and stays stable across runs).
+            if line.contains("states generated") {
+                break;
+            }
+            let line = line.trim_end();
+            if !line.is_empty() {
+                trace.push(line);
+            }
+        }
+    }
+    trace.join("\n")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -227,6 +357,13 @@ mod tests {
     fn dispatch_is_stable_for_dafny() {
         assert_eq!(dispatch(Substrate::Dafny), Backend::Dafny);
         assert_eq!(dispatch(Substrate::Dafny).name(), "dafny");
+    }
+
+    #[test]
+    fn tla_substrate_routes_to_the_tlc_backend() {
+        // M-0018/AC-1 — the second substrate routes through the frozen seam to a distinct backend.
+        assert_eq!(dispatch(Substrate::Tla), Backend::Tlc);
+        assert_eq!(dispatch(Substrate::Tla).name(), "tlc");
     }
 
     #[test]
@@ -266,7 +403,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("loom-backend-{}-nomodel", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("mkdir");
-        let outcome = run(Backend::Dafny, &dir, DAFNY_TIMEOUT);
+        let outcome = run(Backend::Dafny, &dir, VERIFY_TIMEOUT);
         assert_eq!(outcome.verdict, Verdict::Error);
         assert!(outcome.gaps.is_empty());
         let _ = std::fs::remove_dir_all(&dir);
@@ -328,5 +465,114 @@ mod tests {
                    Dafny program verifier finished with 0 verified, 2 errors\n";
         let detail = interpret_dafny_output(out).gaps[0].detail.clone().unwrap();
         assert!(detail.starts_with("a.dfy(1,0)"), "sorted: {detail:?}");
+    }
+
+    // --- TLC backend (M-0018) -------------------------------------------------------------
+
+    #[test]
+    fn tla_backend_names_its_inputs() {
+        assert_eq!(dispatch(Substrate::Tla).name(), "tlc");
+        assert_eq!(Backend::Tlc.inputs(), &[TLA_MODEL_FILE, TLA_CONFIG_FILE]);
+        // The Dafny arm stays pinned too, so the audit trail names the right artifact per backend.
+        assert_eq!(Backend::Dafny.inputs(), &[MODEL_FILE]);
+    }
+
+    #[test]
+    fn tlc_clean_completion_is_proved() {
+        let out = "TLC2 Version 2.19\n\
+                   Model checking completed. No error has been found.\n\
+                   4 states generated, 4 distinct states found, 0 states left on queue.\n";
+        let o = interpret_tlc_output(out);
+        assert_eq!(o.verdict, Verdict::Proved);
+        assert!(o.gaps.is_empty());
+    }
+
+    #[test]
+    fn tlc_invariant_violation_becomes_a_category_b_gap_with_the_trace() {
+        let out = "Computing initial states...\n\
+                   Error: Invariant Inv is violated.\n\
+                   Error: The behavior up to this point is:\n\
+                   State 1: <Initial predicate>\n\
+                   x = 0\n\
+                   \n\
+                   State 2: <Next line 5>\n\
+                   x = 3\n\
+                   \n\
+                   4 states generated, 4 distinct states found, 0 states left on queue.\n";
+        let o = interpret_tlc_output(out);
+        assert_eq!(o.verdict, Verdict::Refuted);
+        assert_eq!(o.gaps.len(), 1);
+        assert_eq!(o.gaps[0].code, "B");
+        let detail = o.gaps[0].detail.as_ref().unwrap();
+        assert!(
+            detail.contains("Invariant Inv is violated"),
+            "names the claim: {detail:?}"
+        );
+        assert!(
+            detail.contains("State 2:") && detail.contains("x = 3"),
+            "carries the trace: {detail:?}"
+        );
+        // The trace stops before the run statistics, so it stays stable across runs.
+        assert!(
+            !detail.contains("states generated"),
+            "trace excludes stats: {detail:?}"
+        );
+    }
+
+    #[test]
+    fn tlc_temporal_violation_is_refuted() {
+        let out = "Error: Temporal properties were violated.\n\
+                   Error: The following behavior constitutes a counter-example:\n\
+                   State 1: <Initial predicate>\n\
+                   x = 0\n\
+                   3 states generated, 3 distinct states found, 0 states left on queue.\n";
+        assert_eq!(interpret_tlc_output(out).verdict, Verdict::Refuted);
+    }
+
+    #[test]
+    fn tlc_no_completion_result_is_an_error_not_a_pass() {
+        // A killed / state-exhausted / exception run prints neither the success sentinel nor a
+        // violation. Reporting it as `proved` would be a false proof — it must be `error`.
+        let out = "TLC2 Version 2.19\n\
+                   Computing initial states...\n\
+                   TLC threw an unexpected exception.\n";
+        let o = interpret_tlc_output(out);
+        assert_eq!(o.verdict, Verdict::Error);
+        assert!(o.gaps.is_empty());
+    }
+
+    #[test]
+    fn tlc_parse_failure_is_an_error_not_a_pass() {
+        let o = interpret_tlc_output("Error: Parsing or semantic analysis failed.\n");
+        assert_eq!(o.verdict, Verdict::Error);
+    }
+
+    #[test]
+    fn a_run_that_exceeds_the_timeout_is_an_error_not_a_hang() {
+        // The shared G1 isolation branch: a subprocess outliving the ceiling is killed and
+        // surfaced as `error`, never a hung runner or a false verdict. Uses `sleep` as a stand-in
+        // slow verifier; the interpret fn must not be reached on a timeout.
+        let mut command = Command::new("sleep");
+        command.arg("30");
+        let outcome = run_under_timeout(command, Duration::from_millis(200), "sleeper", |_| {
+            panic!("interpret must not be called when the run times out")
+        });
+        assert_eq!(outcome.verdict, Verdict::Error);
+        assert!(
+            outcome.rationale.contains("exceeded"),
+            "names the timeout: {}",
+            outcome.rationale
+        );
+    }
+
+    #[test]
+    fn missing_tla_model_is_an_error_not_a_pass() {
+        // Reaches run_tlc's "no model" guard before any subprocess — deterministic, no TLC.
+        let dir = std::env::temp_dir().join(format!("loom-tlc-{}-nomodel", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        let outcome = run(Backend::Tlc, &dir, VERIFY_TIMEOUT);
+        assert_eq!(outcome.verdict, Verdict::Error);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -25,15 +25,18 @@ ENV DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8
 
 # System packages the base image does not already include.
-#   - unzip    : extract the Dafny release zip
-#   - libicu74 : ICU runtime the self-contained Dafny (a .NET app) links against
-#   - gnupg    : verify the gh apt keyring
+#   - unzip                 : extract the Dafny release zip
+#   - libicu74              : ICU runtime the self-contained Dafny (a .NET app) links against
+#   - gnupg                 : verify the gh apt keyring
+#   - openjdk-17-jre-headless : the JRE that runs TLC (the M-0018 second substrate); tla2tools
+#                             is pure Java, so this is the only native dependency it needs
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
         gnupg \
         unzip \
         libicu74 \
+        openjdk-17-jre-headless \
     && rm -rf /var/lib/apt/lists/*
 
 # GitHub CLI from the official apt repo (no devcontainer feature).
@@ -90,6 +93,22 @@ RUN arch="$(dpkg --print-architecture)" \
     && rm /tmp/dafny.zip \
     && ln -sf /usr/local/lib/dafny/dafny /usr/local/bin/dafny \
     && dafny --version
+
+# TLA+ / TLC — the second verification substrate (M-0018), a model checker (explicit-state,
+# distinct from Dafny's deductive SMT). Pinned self-contained tla2tools.jar; pure Java, so it is
+# arch-portable (no arch guard) and needs only the JRE installed above. The `tlc` wrapper runs
+# the tlc2.TLC main class; -workers 1 is set per-run by loom's backend for reproducible state
+# counts (G1). Bump TLA_TOOLS_VERSION to track TLA+ tools releases.
+ARG TLA_TOOLS_VERSION=1.7.4
+RUN curl -fsSL "https://github.com/tlaplus/tlaplus/releases/download/v${TLA_TOOLS_VERSION}/tla2tools.jar" \
+        -o /usr/local/lib/tla2tools.jar \
+    && printf '%s\n' \
+        '#!/bin/sh' \
+        '# TLC model checker wrapper (loom M-0018). Runs tlc2.TLC from the pinned tla2tools.jar.' \
+        'exec java -XX:+UseParallelGC -cp /usr/local/lib/tla2tools.jar tlc2.TLC "$@"' \
+        > /usr/local/bin/tlc \
+    && chmod +x /usr/local/bin/tlc \
+    && tlc 2>&1 | head -1
 
 # PATH + Go env for every shell. GOTOOLCHAIN=local pins us to the Go installed
 # above (no silent auto-download of a different version). aiwf, installed by

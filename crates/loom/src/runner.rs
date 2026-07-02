@@ -82,10 +82,10 @@ fn report_for(p: &Property) -> io::Result<crate::report::GapReport> {
     Ok(match crate::umbrella::parse(&source) {
         Ok(umbrella) => {
             let backend = crate::backend::dispatch(umbrella.substrate);
-            let outcome = crate::backend::run(backend, &p.dir, crate::backend::DAFNY_TIMEOUT);
+            let outcome = crate::backend::run(backend, &p.dir, crate::backend::VERIFY_TIMEOUT);
             let audit = Audit {
                 checked: format!("umbrella claim for {} via {} verify", p.id, backend.name()),
-                inputs: vec![crate::backend::MODEL_FILE.to_string()],
+                inputs: backend.inputs().iter().map(|s| s.to_string()).collect(),
                 rationale: outcome.rationale,
             };
             GapReport::verified(
