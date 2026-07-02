@@ -64,7 +64,7 @@ Observable at epic close (not tests):
 
 Candidates; only the first is detailed just-in-time (via `aiwfx-plan-milestones` / `aiwfx-start-milestone`). Later ones are refined when reached.
 
-1. **Seed — overlay + runner + the five frozen contracts.** Stand up the overlay pattern, the `make loom` opt-in runner, and the frozen contracts on the three-property aiwf Dafny seed (FSM terminality, cancel-edge-legality [at-risk], archive⇔terminality). *(first — detailed now)*
+1. **`M-0016` — Stand up the loom-light overlay, runner, and frozen contracts.** The overlay pattern, the `make loom` opt-in runner, and the five frozen contracts, on the three-property aiwf Dafny seed (FSM terminality, cancel-edge-legality [at-risk], archive⇔terminality). *(detailed; status `draft`)*
 2. **Self-host the seed core.** Turn loom on loom: hand-author umbrellas for loom's trust-critical plumbing (gap-report schema seam, atomic writes, parser/dispatch totality, reproducibility) and verify them with the seed runner — the dogfood, and the from-the-inside validation of the frozen contracts. *(pulled early)*
 3. **Force the second substrate.** Add a model-checker backend through the seam, on the repo-lock mutual-exclusion property and an authorization-reachability property — proving the anti-rewrite seam under real load. *(candidate)*
 4. **Tool the authoring loop.** Turn the E-0004 blind-subagent authoring pattern into a `loom author` command. *(candidate)*
