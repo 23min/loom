@@ -1,0 +1,13 @@
+{
+  "schema_version": "1",
+  "property": "archive-terminality",
+  "verdict": "pending",
+  "subject": null,
+  "substrate": null,
+  "gaps": [],
+  "audit": {
+    "checked": "property discovered in the overlay",
+    "inputs": [],
+    "rationale": "M-0016/AC-3: schema frozen; umbrella parse (AC-5) and verification (AC-6) pending"
+  }
+}

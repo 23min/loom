@@ -1,0 +1,18 @@
+{
+  "schema_version": "1",
+  "property": "fsm-terminality",
+  "verdict": "proved",
+  "subject": {
+    "repo": "aiwf",
+    "ref": "v0.20.0",
+    "path": "internal/entity/transition.go",
+    "symbol": null
+  },
+  "substrate": "dafny",
+  "gaps": [],
+  "audit": {
+    "checked": "no transition leaves a terminal status, for every kind",
+    "inputs": ["fsm-terminality/model.dfy"],
+    "rationale": "Dafny discharged the absorbing-terminal obligation for all kinds"
+  }
+}
