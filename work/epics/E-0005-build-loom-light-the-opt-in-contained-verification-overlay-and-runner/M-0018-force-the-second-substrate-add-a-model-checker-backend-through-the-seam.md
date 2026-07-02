@@ -9,7 +9,7 @@ tdd: required
 acs:
     - id: AC-1
       title: Model-checker substrate routes through the frozen runner/backend seam
-      status: open
+      status: met
       tdd_phase: done
     - id: AC-2
       title: A TLA+ property verifies proved end to end via loom verify
