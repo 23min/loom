@@ -22,7 +22,7 @@ acs:
     - id: AC-4
       title: Atomic-write crash-safety self-hosts and verifies
       status: open
-      tdd_phase: red
+      tdd_phase: green
     - id: AC-5
       title: Frozen contracts hold from the inside
       status: open
