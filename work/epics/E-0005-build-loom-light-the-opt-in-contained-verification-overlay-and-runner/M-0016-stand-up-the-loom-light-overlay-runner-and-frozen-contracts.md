@@ -15,7 +15,7 @@ acs:
       tdd_phase: done
     - id: AC-3
       title: Gap-report schema frozen and reader-equivalent
-      status: open
+      status: met
       tdd_phase: done
     - id: AC-4
       title: Report writes are atomic and reproducible
