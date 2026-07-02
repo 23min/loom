@@ -57,7 +57,7 @@ modes, not just one.
 | M-0012 | Harden the validity gate for executable-spec subjects | done |
 | M-0013 | Harden the spec extractor for complex executable specs | done |
 
-## E-0004 — Dogfood the whole umbrella loop on real aiwf code (active)
+## E-0004 — Dogfood the whole umbrella loop on real aiwf code (done)
 
 ### Goal
 
