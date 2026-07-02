@@ -26,7 +26,7 @@ acs:
     - id: AC-5
       title: Frozen contracts hold from the inside
       status: open
-      tdd_phase: green
+      tdd_phase: done
 ---
 ## Goal
 
