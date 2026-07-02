@@ -25,6 +25,10 @@ acs:
       title: Umbrella format agnostic; parse+dispatch total
       status: open
       tdd_phase: red
+    - id: AC-6
+      title: Seed properties verify; at-risk gap surfaces
+      status: open
+      tdd_phase: red
 ---
 
 ## Goal
@@ -40,4 +44,6 @@ acs:
 ### AC-4 — Report writes are atomic and reproducible
 
 ### AC-5 — Umbrella format agnostic; parse+dispatch total
+
+### AC-6 — Seed properties verify; at-risk gap surfaces
 
