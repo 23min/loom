@@ -26,7 +26,7 @@ acs:
     - id: AC-5
       title: The model checker's nondeterminism is isolated and surfaced
       status: open
-      tdd_phase: red
+      tdd_phase: green
 ---
 ## Goal
 
