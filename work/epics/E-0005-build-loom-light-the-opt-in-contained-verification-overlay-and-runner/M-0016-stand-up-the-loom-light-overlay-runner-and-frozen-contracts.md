@@ -73,7 +73,7 @@ Running the runner over the three-property aiwf overlay: FSM-terminality and arc
 
 ## Design notes
 
-- **Runner language: Go** (decided — ecosystem match with aiwf and the Go subject; the runner shells out to Dafny, so the choice is about CLI/gitops ergonomics). Captured via `aiwfx-record-decision` at start if it warrants a durable record.
+- **Runner language: Rust** (decided per ADR-0001 — loom's implementation embodies its own correctness stance: robustness, type safety, elegance; and it stays **host-agnostic** — loom must be usable outside aiwf, so aiwf's Go is incidental, not a reason. Reuses the existing E-0004 Rust ultralight harness; the runner shells out to Dafny). loom generates **no** target code — code generation, where needed, is the LLM's role (ADR-0017).
 - **Overlay layout:** `loom/<property>/{umbrella.md, <lowering>.dfy, gap-report.json, gap-report.md}` — finalized under AC-1/AC-5.
 - **Gap-report schema:** JSON, versioned; the `.md` render is derived. The schema is the frozen contract (AC-3).
 - The three seed properties reuse the E-0004 Dafny modeling approach (blind-authored model + claims), now driven through the runner rather than by hand.
