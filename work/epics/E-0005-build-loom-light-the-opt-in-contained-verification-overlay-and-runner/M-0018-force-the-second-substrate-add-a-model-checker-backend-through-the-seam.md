@@ -6,8 +6,16 @@ parent: E-0005
 depends_on:
     - M-0016
 tdd: required
+acs:
+    - id: AC-1
+      title: Model-checker substrate routes through the frozen runner/backend seam
+      status: open
+      tdd_phase: red
 ---
 
 ## Goal
 
 ## Acceptance criteria
+
+### AC-1 — Model-checker substrate routes through the frozen runner/backend seam
+
