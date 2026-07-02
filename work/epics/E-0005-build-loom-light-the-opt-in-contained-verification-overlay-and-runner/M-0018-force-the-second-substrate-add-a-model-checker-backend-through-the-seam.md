@@ -1,7 +1,7 @@
 ---
 id: M-0018
 title: 'Force the second substrate: add a model-checker backend through the seam'
-status: in_progress
+status: done
 parent: E-0005
 depends_on:
     - M-0016
