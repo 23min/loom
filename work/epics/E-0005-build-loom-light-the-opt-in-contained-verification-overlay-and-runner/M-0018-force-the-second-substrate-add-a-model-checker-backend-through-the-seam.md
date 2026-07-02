@@ -14,7 +14,7 @@ acs:
     - id: AC-2
       title: A TLA+ property verifies proved end to end via loom verify
       status: open
-      tdd_phase: red
+      tdd_phase: green
     - id: AC-3
       title: A TLC counterexample surfaces as a category-(B) gap
       status: open
