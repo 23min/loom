@@ -51,7 +51,7 @@ Observable at epic close (not tests):
 
 ## Open questions
 
-- **Runner language / home.** The engine lives in this repo; the implementation language (reuse the E-0004 Rust harness, or Go to match aiwf's ecosystem) is decided at the seed milestone against the substrate-dispatch and gitops needs.
+- **Runner home / structure.** The engine lives in this repo, implemented in **Rust** (per ADR-0001 — loom's own correctness stance, host-agnostic; reusing the E-0004 ultralight harness). loom generates no target code; code generation is the LLM's role (ADR-0017). The crate/module structure is decided at the seed milestone.
 - **Model↔source binding.** How the umbrella pins the host symbol + version and how the runner offers a "re-check against current source" mode — resolved as part of the overlay-format contract in the seed milestone.
 - **Advisory→gating policy shape.** How a property is promoted from advisory to build-gating, recorded per-property in the overlay — resolved when the first property is a gating candidate.
 
