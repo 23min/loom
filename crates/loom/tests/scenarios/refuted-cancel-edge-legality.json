@@ -1,0 +1,24 @@
+{
+  "schema_version": "1",
+  "property": "cancel-edge-legality",
+  "verdict": "refuted",
+  "subject": {
+    "repo": "aiwf",
+    "ref": "v0.20.0",
+    "path": "internal/entity/transition.go",
+    "symbol": "CancelTarget"
+  },
+  "substrate": "dafny",
+  "gaps": [
+    {
+      "code": "B",
+      "summary": "cancel may route an FSM-illegal from->target edge",
+      "detail": "CancelTarget(k,s) can return t with legal(k,s,t) false; nothing downstream re-checks it"
+    }
+  ],
+  "audit": {
+    "checked": "for every kind and non-terminal s, CancelTarget(k,s) is empty or a legal edge",
+    "inputs": ["cancel-edge-legality/model.dfy"],
+    "rationale": "counterexample found: the edge-legality obligation does not hold"
+  }
+}

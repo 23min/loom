@@ -27,3 +27,8 @@ STATUS.md
 # Claude Code local settings + aiwf-generated statusline (per-environment, not committed)
 .claude/settings.local.json
 .claude/statusline.sh
+.claude/health.*.json
+
+# Rust build output and macOS directory cruft (generated / local, never committed)
+/target
+.DS_Store

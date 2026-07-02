@@ -71,7 +71,7 @@ observation whether to build the thin loom-light tool.
 | M-0014 | Turn the umbrella loop on the status-transition FSM | done |
 | M-0015 | Turn the loop on real string-based canonicalization | done |
 
-## E-0005 — Build loom-light: the opt-in, contained verification overlay and runner (proposed)
+## E-0005 — Build loom-light: the opt-in, contained verification overlay and runner (active)
 
 ### Goal
 
@@ -79,5 +79,5 @@ Turn the E-0004 qualified proceed (`D-0006`) into a real, growable tool: an **op
 
 | Milestone | Title | Status |
 |---|---|---|
-| M-0016 | Stand up the loom-light overlay, runner, and frozen contracts | draft |
+| M-0016 | Stand up the loom-light overlay, runner, and frozen contracts | in_progress |
 

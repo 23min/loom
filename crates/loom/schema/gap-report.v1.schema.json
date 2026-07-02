@@ -1,0 +1,196 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GapReport",
+  "description": "A gap report: one property's graded verification outcome, written to `<prop>/report.json`.",
+  "type": "object",
+  "properties": {
+    "audit": {
+      "description": "The audit trail: what was checked, the inputs seen, and why the verdict went that way.",
+      "$ref": "#/$defs/Audit"
+    },
+    "gaps": {
+      "description": "Findings. Empty for a clean full proof; the at-risk property surfaces a `code:\"B\"` gap\nonce verified (AC-6).",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Gap"
+      }
+    },
+    "property": {
+      "description": "The property id — the overlay subdirectory name.",
+      "type": "string"
+    },
+    "schema_version": {
+      "description": "The frozen contract version (see [`SCHEMA_VERSION`]).",
+      "type": "string"
+    },
+    "subject": {
+      "description": "The code under scrutiny, referenced by version — populated once the umbrella is parsed\n(AC-5); `null` at the discovery/pending stage.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Subject"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "substrate": {
+      "description": "The verification substrate (backend) — populated once known; `null` when pending.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Substrate"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "verdict": {
+      "description": "The graded outcome of verification.",
+      "$ref": "#/$defs/Verdict"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "property",
+    "verdict",
+    "gaps",
+    "audit"
+  ],
+  "$defs": {
+    "Audit": {
+      "description": "The audit trail behind a verdict (E3 / G3 — observable, reproducible reasoning).",
+      "type": "object",
+      "properties": {
+        "checked": {
+          "description": "What was checked — the claim/obligation the verdict is about.",
+          "type": "string"
+        },
+        "inputs": {
+          "description": "The inputs the verdict saw (e.g. the lowering file). Order-stable (G1).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "rationale": {
+          "description": "Why the verdict went the way it did.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "checked",
+        "inputs",
+        "rationale"
+      ]
+    },
+    "Gap": {
+      "description": "One finding: a gap between the intended property and what the code guarantees.",
+      "type": "object",
+      "properties": {
+        "code": {
+          "description": "The gap class code (loom's gap taxonomy, e.g. `\"B\"`).",
+          "type": "string"
+        },
+        "detail": {
+          "description": "Optional detail — a counterexample, the unproven obligation, etc.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "summary": {
+          "description": "A one-line human summary of the gap.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "summary"
+      ]
+    },
+    "Subject": {
+      "description": "The code under scrutiny, referenced by version — never read at verify time (G1).",
+      "type": "object",
+      "properties": {
+        "path": {
+          "description": "The path to the file under scrutiny, within `repo` at `ref`.",
+          "type": "string"
+        },
+        "ref": {
+          "description": "The version the subject is pinned at — a tag/ref, referenced not read (G1).",
+          "type": "string"
+        },
+        "repo": {
+          "description": "The host repository the subject lives in (e.g. `\"aiwf\"`).",
+          "type": "string"
+        },
+        "symbol": {
+          "description": "The specific symbol under scrutiny, if narrower than the whole file.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "repo",
+        "ref",
+        "path"
+      ]
+    },
+    "Substrate": {
+      "description": "The verification substrate — the backend that produced the verdict. Grows additively.",
+      "oneOf": [
+        {
+          "description": "Dafny + Z3.",
+          "type": "string",
+          "const": "dafny"
+        }
+      ]
+    },
+    "Verdict": {
+      "description": "The graded verdict: the rung verification reached, plus operational states.",
+      "oneOf": [
+        {
+          "description": "Full proof — the property holds unconditionally (top rung).",
+          "type": "string",
+          "const": "proved"
+        },
+        {
+          "description": "Bounded proof — the property holds within explicit bounds.",
+          "type": "string",
+          "const": "bounded"
+        },
+        {
+          "description": "Supported by concrete examples only — no proof (bottom rung).",
+          "type": "string",
+          "const": "examples"
+        },
+        {
+          "description": "Verification found the property does not hold, or found a hole (a gap is recorded).",
+          "type": "string",
+          "const": "refuted"
+        },
+        {
+          "description": "Not yet verified — the schema/seam stage before the backend runs.",
+          "type": "string",
+          "const": "pending"
+        },
+        {
+          "description": "The verifier failed to produce a verdict (its nondeterminism isolated + surfaced, G1).",
+          "type": "string",
+          "const": "error"
+        }
+      ]
+    }
+  }
+}
