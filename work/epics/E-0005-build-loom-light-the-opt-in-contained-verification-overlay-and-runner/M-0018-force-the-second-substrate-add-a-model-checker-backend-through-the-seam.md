@@ -15,6 +15,10 @@ acs:
       title: A TLA+ property verifies proved end to end via loom verify
       status: open
       tdd_phase: red
+    - id: AC-3
+      title: A TLC counterexample surfaces as a category-(B) gap
+      status: open
+      tdd_phase: red
 ---
 
 ## Goal
@@ -24,4 +28,6 @@ acs:
 ### AC-1 — Model-checker substrate routes through the frozen runner/backend seam
 
 ### AC-2 — A TLA+ property verifies proved end to end via loom verify
+
+### AC-3 — A TLC counterexample surfaces as a category-(B) gap
 
