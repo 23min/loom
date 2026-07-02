@@ -1,7 +1,7 @@
 ---
 id: ADR-0003
 title: Python as the v0 target language for code generation
-status: proposed
+status: rejected
 ---
 # ADR-0003 — Python as the v0 target language for code generation
 
