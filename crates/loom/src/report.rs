@@ -269,7 +269,63 @@ mod tests {
                         .to_string(),
                 },
             },
+            // The remaining rungs of the verdict ladder, so the D2 seam validates every wire
+            // value — a serde<->schemars drift on an un-sampled variant would otherwise slip.
+            GapReport {
+                schema_version: SCHEMA_VERSION.to_string(),
+                property: "bounded-example".to_string(),
+                verdict: Verdict::Bounded,
+                subject: None,
+                substrate: Some(Substrate::Dafny),
+                gaps: Vec::new(),
+                audit: Audit {
+                    checked: "the property holds for all inputs within the declared bounds"
+                        .to_string(),
+                    inputs: vec!["bounded-example/model.dfy".to_string()],
+                    rationale: "dafny discharged the obligation under the stated bounds"
+                        .to_string(),
+                },
+            },
+            GapReport {
+                schema_version: SCHEMA_VERSION.to_string(),
+                property: "examples-only".to_string(),
+                verdict: Verdict::Examples,
+                subject: None,
+                substrate: Some(Substrate::Dafny),
+                gaps: Vec::new(),
+                audit: Audit {
+                    checked: "the property is supported by concrete examples only".to_string(),
+                    inputs: vec!["examples-only/model.dfy".to_string()],
+                    rationale: "no proof attempted; witnesses recorded".to_string(),
+                },
+            },
+            GapReport {
+                schema_version: SCHEMA_VERSION.to_string(),
+                property: "verifier-error".to_string(),
+                verdict: Verdict::Error,
+                subject: None,
+                substrate: Some(Substrate::Dafny),
+                gaps: Vec::new(),
+                audit: Audit {
+                    checked: "the verifier failed to produce a verdict".to_string(),
+                    inputs: vec!["verifier-error/model.dfy".to_string()],
+                    rationale:
+                        "dafny gave up (out of resource); nondeterminism surfaced, not a proof"
+                            .to_string(),
+                },
+            },
         ]
+    }
+
+    #[test]
+    fn schema_version_matches_the_published_schema_path() {
+        // A version bump must move both constants together: the published filename carries the
+        // version and a cross-process reader dispatches on SCHEMA_VERSION. If they drift, a bump
+        // could update one and leave an old reader loading a new report against a stale schema.
+        assert!(
+            SCHEMA_RELPATH.contains(&format!("v{SCHEMA_VERSION}.")),
+            "SCHEMA_RELPATH ({SCHEMA_RELPATH}) must carry v{SCHEMA_VERSION} to match SCHEMA_VERSION"
+        );
     }
 
     #[test]
