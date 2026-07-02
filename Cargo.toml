@@ -1,0 +1,9 @@
+# loom workspace. The loom-light engine lives here (ADR-0001: Rust, for loom's own
+# correctness stance and host-agnosticism). Downstream repos carry only a `loom/`
+# overlay + a hook; the engine never enters them.
+#
+# `experiments/` (the E-0004 gaming harness) is excluded so it stays an independent crate.
+[workspace]
+resolver = "2"
+members = ["crates/loom"]
+exclude = ["experiments"]
