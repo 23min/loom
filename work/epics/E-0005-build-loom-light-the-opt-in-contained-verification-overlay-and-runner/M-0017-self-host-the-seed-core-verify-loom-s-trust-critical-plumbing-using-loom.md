@@ -1,7 +1,7 @@
 ---
 id: M-0017
 title: 'Self-host the seed core: verify loom''s trust-critical plumbing using loom'
-status: in_progress
+status: done
 parent: E-0005
 depends_on:
     - M-0016
