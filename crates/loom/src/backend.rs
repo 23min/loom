@@ -111,16 +111,19 @@ fn run_dafny(prop_dir: &Path, timeout: Duration) -> BackendOutcome {
 }
 
 /// Map Dafny's output to a verdict. Pure — the seam that lets the mapping be tested with canned
-/// output. 0 errors → proved; >0 → refuted with a category-(B) gap; no recognizable summary →
-/// error (a broken model is reported, never silently proved).
+/// output. Total over the summary line: a run is `proved` only when the verifier discharged at
+/// least one obligation with no errors *and* no "gave up" category; verification errors are
+/// `refuted` with a category-(B) gap; anything else — no recognizable summary, the verifier
+/// declining to decide (out of resource / time out / inconclusive), or a vacuous run that verified
+/// nothing — is `error`. A "gave up" outcome is never laundered into a proof (G1: Z3
+/// nondeterminism is surfaced, never silently folded into a result).
 fn interpret_dafny_output(output: &str) -> BackendOutcome {
-    match parse_error_count(output) {
-        Some(0) => BackendOutcome {
-            verdict: Verdict::Proved,
-            gaps: Vec::new(),
-            rationale: "dafny discharged every proof obligation (0 errors)".to_string(),
-        },
-        Some(n) => BackendOutcome {
+    let Some(summary) = parse_summary(output) else {
+        return error_outcome("dafny produced no recognizable result summary".to_string());
+    };
+
+    if summary.errors > 0 {
+        return BackendOutcome {
             verdict: Verdict::Refuted,
             gaps: vec![Gap {
                 code: "B".to_string(),
@@ -128,25 +131,76 @@ fn interpret_dafny_output(output: &str) -> BackendOutcome {
                 detail: Some(extract_error_lines(output)),
             }],
             rationale: format!(
-                "dafny reported {n} verification error(s); the claim is not established"
+                "dafny reported {} verification error(s); the claim is not established",
+                summary.errors
             ),
-        },
-        None => error_outcome("dafny produced no recognizable result summary".to_string()),
+        };
+    }
+
+    if !summary.undecided.is_empty() {
+        // The verifier declined to decide — Z3 exhausted its budget or gave up. This is NOT a
+        // proof; surfacing it as `error` keeps the nondeterminism visible rather than folding a
+        // "gave up" into a green `proved`.
+        return error_outcome(format!(
+            "dafny did not discharge the obligations ({}); the verifier gave up, not a proof",
+            summary.undecided.join(", ")
+        ));
+    }
+
+    if summary.verified == 0 {
+        // 0 verified, 0 errors, nothing undecided: the lowering carried no obligations, so a proof
+        // claim would be vacuous.
+        return error_outcome(
+            "dafny verified 0 obligations — the lowering carries nothing to prove".to_string(),
+        );
+    }
+
+    BackendOutcome {
+        verdict: Verdict::Proved,
+        gaps: Vec::new(),
+        rationale: format!(
+            "dafny discharged every proof obligation ({} verified, 0 errors)",
+            summary.verified
+        ),
     }
 }
 
-/// Extract the error count from Dafny's summary line
-/// (`Dafny program verifier finished with N verified, M error(s)`).
-fn parse_error_count(output: &str) -> Option<u64> {
-    let line = output
-        .lines()
-        .find(|l| l.contains("Dafny program verifier finished with"))?;
-    line.split("verified,")
-        .nth(1)?
-        .split_whitespace()
-        .next()?
-        .parse()
-        .ok()
+/// The parsed Dafny summary line
+/// (`Dafny program verifier finished with N verified, M error(s)[, K <category>]…`).
+struct DafnySummary {
+    verified: u64,
+    errors: u64,
+    /// Non-error, non-verified categories carrying a positive count — the verifier declining to
+    /// decide (e.g. `out of resource`, `time out`, `inconclusive`). Each rendered as `"K label"`.
+    undecided: Vec<String>,
+}
+
+/// Parse Dafny's summary line **totally**: classify every `count label` segment so no category
+/// the verifier reports can be silently dropped. Returns `None` when no summary line is present.
+fn parse_summary(output: &str) -> Option<DafnySummary> {
+    let tail = output.lines().find_map(|l| {
+        l.split_once("Dafny program verifier finished with ")
+            .map(|(_, tail)| tail)
+    })?;
+    let mut summary = DafnySummary {
+        verified: 0,
+        errors: 0,
+        undecided: Vec::new(),
+    };
+    for segment in tail.split(',') {
+        let segment = segment.trim();
+        let mut parts = segment.splitn(2, ' ');
+        let Some(count) = parts.next().and_then(|c| c.parse::<u64>().ok()) else {
+            continue;
+        };
+        match parts.next().unwrap_or("").trim() {
+            "verified" => summary.verified = count,
+            "error" | "errors" => summary.errors = count,
+            label if count > 0 => summary.undecided.push(format!("{count} {label}")),
+            _ => {}
+        }
+    }
+    Some(summary)
 }
 
 /// The Dafny error lines, sorted for a deterministic report (G1). Locations are relative to
@@ -216,6 +270,56 @@ mod tests {
         assert_eq!(outcome.verdict, Verdict::Error);
         assert!(outcome.gaps.is_empty());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn out_of_resource_is_an_error_not_a_pass() {
+        // Z3 exhausted its budget: 0 errors, but the obligation was NOT discharged. Reporting this
+        // as `proved` is the worst failure mode for a verifier — a false proof. It must surface as
+        // `error` so the nondeterminism stays visible (G1), never silently folded into a result.
+        let o = interpret_dafny_output(
+            "Dafny program verifier finished with 0 verified, 0 errors, 1 out of resource\n",
+        );
+        assert_eq!(o.verdict, Verdict::Error);
+        assert!(o.gaps.is_empty());
+    }
+
+    #[test]
+    fn time_out_is_an_error_not_a_pass() {
+        let o = interpret_dafny_output(
+            "Dafny program verifier finished with 2 verified, 0 errors, 1 time out\n",
+        );
+        assert_eq!(o.verdict, Verdict::Error);
+        assert!(o.gaps.is_empty());
+    }
+
+    #[test]
+    fn inconclusive_is_an_error_not_a_pass() {
+        let o = interpret_dafny_output(
+            "Dafny program verifier finished with 0 verified, 0 errors, 1 inconclusive\n",
+        );
+        assert_eq!(o.verdict, Verdict::Error);
+    }
+
+    #[test]
+    fn a_zero_count_category_does_not_derail_a_proof() {
+        // Defensive: a trailing category with count 0 carries no "gave up" signal and must be
+        // ignored, not treated as undecided — the run is still a clean proof.
+        let o = interpret_dafny_output(
+            "Dafny program verifier finished with 1 verified, 0 errors, 0 out of resource\n",
+        );
+        assert_eq!(o.verdict, Verdict::Proved);
+        assert!(o.gaps.is_empty());
+    }
+
+    #[test]
+    fn verifying_nothing_is_an_error_not_a_vacuous_pass() {
+        // No obligations were checked at all (0 verified, 0 errors) — a proof claim would be
+        // vacuous. An empty or obligation-free lowering is an authoring error, not a pass.
+        let o =
+            interpret_dafny_output("Dafny program verifier finished with 0 verified, 0 errors\n");
+        assert_eq!(o.verdict, Verdict::Error);
+        assert!(o.gaps.is_empty());
     }
 
     #[test]
