@@ -21,6 +21,10 @@ acs:
       title: Report writes are atomic and reproducible
       status: open
       tdd_phase: red
+    - id: AC-5
+      title: Umbrella format agnostic; parse+dispatch total
+      status: open
+      tdd_phase: red
 ---
 
 ## Goal
@@ -34,4 +38,6 @@ acs:
 ### AC-3 — Gap-report schema frozen and reader-equivalent
 
 ### AC-4 — Report writes are atomic and reproducible
+
+### AC-5 — Umbrella format agnostic; parse+dispatch total
 
