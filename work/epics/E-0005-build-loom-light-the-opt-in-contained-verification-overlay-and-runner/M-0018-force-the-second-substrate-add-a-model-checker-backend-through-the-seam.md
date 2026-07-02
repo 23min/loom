@@ -23,6 +23,10 @@ acs:
       title: Gap-report schema carries the second substrate, version-gated v1 to v2
       status: open
       tdd_phase: red
+    - id: AC-5
+      title: The model checker's nondeterminism is isolated and surfaced
+      status: open
+      tdd_phase: red
 ---
 
 ## Goal
@@ -36,4 +40,6 @@ acs:
 ### AC-3 — A TLC counterexample surfaces as a category-(B) gap
 
 ### AC-4 — Gap-report schema carries the second substrate, version-gated v1 to v2
+
+### AC-5 — The model checker's nondeterminism is isolated and surfaced
 
