@@ -23,3 +23,7 @@ STATUS.md
 
 # in-repo git worktrees for ritualized epic/milestone branches
 .claude/worktrees/
+
+# Claude Code local settings + aiwf-generated statusline (per-environment, not committed)
+.claude/settings.local.json
+.claude/statusline.sh

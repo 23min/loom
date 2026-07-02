@@ -75,6 +75,8 @@ UMBRELLA — entity-id canonicalization
 
 The human authored **Intent** and **Examples**; audited **Back-translation** and the **Gap report**. The formal **Claims** were the LLM's, and stay under the hood.
 
+**Umbrella convention** (established in loop 1). An umbrella follows the five-register `.lm` skeleton — `knows` · `relates` · `shows` · `does` · `proves` · `gap` ([`language-reference.md`](reference/language-reference.md) §4) — not ad-hoc sections. Framing: the **umbrella is the whole markdown document**; the `module` is its **formal spine**. The prose **Intent** (layer 1) and the **back-translation** (the `summarize` op's output) stay as markdown adjuncts — no doc-comment walls. Process/metadata (which loop, blind-subagent provenance, the Dafny-lowering caveat) lives in the **gap report**, not the umbrella. loom's semantics map exactly: `proves` is checked against `does`, and the failures *are* the gap report. Worked real example: [`experiments/loom-loop/milestone-fsm/umbrella.md`](../experiments/loom-loop/milestone-fsm/umbrella.md). (The sketch above predates the convention and keeps its old labels for illustration.)
+
 ## 3. The loop
 
 ```
