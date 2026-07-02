@@ -20,7 +20,7 @@ acs:
     - id: AC-4
       title: Report writes are atomic and reproducible
       status: open
-      tdd_phase: green
+      tdd_phase: done
     - id: AC-5
       title: Umbrella format agnostic; parse+dispatch total
       status: open
