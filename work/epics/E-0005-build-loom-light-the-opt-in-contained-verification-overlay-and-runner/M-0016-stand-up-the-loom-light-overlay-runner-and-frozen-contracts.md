@@ -17,6 +17,10 @@ acs:
       title: Gap-report schema frozen and reader-equivalent
       status: open
       tdd_phase: red
+    - id: AC-4
+      title: Report writes are atomic and reproducible
+      status: open
+      tdd_phase: red
 ---
 
 ## Goal
@@ -28,4 +32,6 @@ acs:
 ### AC-2 — make loom is opt-in, off the default pipeline
 
 ### AC-3 — Gap-report schema frozen and reader-equivalent
+
+### AC-4 — Report writes are atomic and reproducible
 
