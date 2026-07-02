@@ -11,6 +11,10 @@ acs:
       title: Model-checker substrate routes through the frozen runner/backend seam
       status: open
       tdd_phase: red
+    - id: AC-2
+      title: A TLA+ property verifies proved end to end via loom verify
+      status: open
+      tdd_phase: red
 ---
 
 ## Goal
@@ -18,4 +22,6 @@ acs:
 ## Acceptance criteria
 
 ### AC-1 — Model-checker substrate routes through the frozen runner/backend seam
+
+### AC-2 — A TLA+ property verifies proved end to end via loom verify
 
