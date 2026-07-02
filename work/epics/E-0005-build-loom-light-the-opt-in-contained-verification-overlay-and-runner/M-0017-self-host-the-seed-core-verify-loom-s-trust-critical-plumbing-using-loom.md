@@ -18,7 +18,7 @@ acs:
     - id: AC-3
       title: Umbrella-parser totality self-hosts and verifies
       status: open
-      tdd_phase: green
+      tdd_phase: done
     - id: AC-4
       title: Atomic-write crash-safety self-hosts and verifies
       status: open
