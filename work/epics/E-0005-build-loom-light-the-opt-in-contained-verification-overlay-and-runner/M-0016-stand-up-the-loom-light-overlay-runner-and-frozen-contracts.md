@@ -91,20 +91,43 @@ Running the runner over the three-property aiwf overlay: FSM-terminality and arc
 
 ## Work log
 
-_(filled during implementation)_
+The engine landed as one `feat` commit (the five frozen contracts), with the
+downstream example and the AC-6 value demo alongside; the wrap review added two
+corrective commits. Per-AC TDD phase timelines are in `aiwf history M-0016/AC-<N>`.
+
+- **AC-1 — containment** (met): `OVERLAY_DIR` + `containment.rs` byte-snapshots the host minus `loom/`; the example overlay demonstrates removal-without-trace. `dbf34d8`, `c12c2f0`.
+- **AC-2 — opt-in** (met): the runner discovers properties by the umbrella file; `make loom` is proven off the default target graph via `make -n all`. `dbf34d8`, `c12c2f0`.
+- **AC-3 — schema frozen** (met): types-first `report.rs` + generated `gap-report.v1.schema.json`; freeze and reader-equivalence tests; every verdict variant and the `SCHEMA_VERSION`↔path invariant pinned at wrap. `dbf34d8`, `2efef77`.
+- **AC-4 — atomic + reproducible** (met): `atomic.rs` temp+rename; crash-safety and byte-identical-reproduction tests in `durability.rs`. `dbf34d8`.
+- **AC-5 — parse+dispatch total** (met): `umbrella::parse` is total (typed `ParseError`); `dispatch` is exhaustive over `Substrate`; the Dafny output→verdict mapping was made total at wrap. `dbf34d8`, `dd4d7b0`.
+- **AC-6 — seed properties verify** (met): `verify_seed` drives the runner over the three-property overlay end to end under real Dafny; the false-proof fix hardened the value claim. `e9b9d90`, `dd4d7b0`.
 
 ## Decisions made during implementation
 
-_(filled during implementation)_
+No new decision entities were opened. The milestone realizes decisions already on
+record: ADR-0001 (Rust engine), ADR-0002 (Dafny backend), ADR-0017 (loom generates
+no target code — the LLM does), and the qualified proceed to build the thin tool
+(D-0006). The types-first report shape — the JSON Schema is generated from the
+serde types, not hand-maintained — is captured in the Design notes above and pinned
+by the freeze test.
 
 ## Validation
 
-_(filled at wrap)_
+- `cargo fmt --check` clean; `cargo clippy --all-targets -- -D warnings` clean; `cargo build` green.
+- `cargo test`: **47 tests pass**, incl. the two Dafny-backed `verify_seed` tests (Dafny 4.9.0 on PATH). The wrap review added 6 tests (5 backend verdict-mapping, 1 schema-version consistency).
+- End-to-end: `loom verify` over a resource-exhausted `{:rlimit 1}` model reports `verdict: error` ("the verifier gave up, not a proof"), never a false `proved`.
 
 ## Deferrals
 
-_(filled at wrap)_
+- **G-0009** — the Dafny backend bounds runs by wall-clock, not a deterministic `--resource-limit` (G1). The "gave up" *correctness* case is fixed here; the *determinism* half is deferred.
+- **G-0010** — an unreadable/non-UTF-8 `umbrella.md` aborts the whole verify batch instead of degrading to a per-property error report.
+- **G-0011** — ADR-0002/0003 reference the planned multi-crate layout (`loom-compile-dafny`/`-python`, a `Verifier` trait), not the as-built single `crates/loom` crate; the decision-record prose is left for a deliberate update.
 
 ## Reviewer notes
 
-_(filled at wrap)_
+Two-lens wrap review ran over the full change-set (base `a89af5c`).
+
+- **Code lens** found one blocking defect — Dafny "out of resource" / "time out" mis-mapped to `proved` (a false proof) — fixed in `dd4d7b0` with a total summary-line classifier + 5 tests, verified end-to-end. Non-blocking N1/N2 deferred to G-0009/G-0010.
+- **Design lens** returned **KEEP** on the frozen gap-report contract: closed enums grow by version-bumped freeze, open-`String` taxonomies (gap codes, subject fields) grow in value-space with no schema change, and `deny_unknown_fields` + version-gated reading is the safety-correct posture for a verification artifact. Two cheap test-completeness nits fixed in `2efef77`.
+- **Documented, not changed:** the version-gated reader contract (a consumer must dispatch on `schema_version` first and refuse versions it doesn't know) and the un-type-enforced `verdict`↔`substrate` coupling (constructors enforce it on write; the wire struct permits illegal states) are deliberate trade-offs for a simple cross-language wire shape.
+- The `println!`/`eprintln!` in `main.rs` are the CLI's operator-facing stdout/stderr, not logging — intentional.
