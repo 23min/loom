@@ -80,6 +80,6 @@ Turn the E-0004 qualified proceed (`D-0006`) into a real, growable tool: an **op
 | Milestone | Title | Status |
 |---|---|---|
 | M-0016 | Stand up the loom-light overlay, runner, and frozen contracts | done |
-| M-0017 | Self-host the seed core: verify loom's trust-critical plumbing using loom | in_progress |
-| M-0018 | Force the second substrate: add a model-checker backend through the seam | draft |
+| M-0017 | Self-host the seed core: verify loom's trust-critical plumbing using loom | done |
+| M-0018 | Force the second substrate: add a model-checker backend through the seam | in_progress |
 

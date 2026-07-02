@@ -60,6 +60,7 @@ go version       || true
 rustc --version  || true
 cargo --version  || true
 dafny --version  || echo "    (dafny NOT found — check the Dockerfile DAFNY_VERSION build)"
+tlc 2>&1 | head -1 || echo "    (tlc NOT found — check the Dockerfile TLA_TOOLS_VERSION build)"
 aiwf version     || true
 claude --version || true
 

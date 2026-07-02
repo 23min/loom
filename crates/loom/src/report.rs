@@ -15,12 +15,14 @@
 use serde::{Deserialize, Serialize};
 
 /// The frozen schema version this build emits. Bump only alongside a schema change and a new
-/// checked-in `schema/gap-report.v<N>.schema.json`.
-pub const SCHEMA_VERSION: &str = "1";
+/// checked-in `schema/gap-report.v<N>.schema.json`. Bumped 1→2 in M-0018 when the second
+/// substrate (`tla`) grew the `substrate` enum — a deliberate, version-gated Contract-2 change.
+pub const SCHEMA_VERSION: &str = "2";
 
 /// The checked-in published schema, relative to the crate manifest dir. The cross-language
-/// contract a non-Rust consumer (e.g. aiwf's future Go reader) validates against.
-pub const SCHEMA_RELPATH: &str = "schema/gap-report.v1.schema.json";
+/// contract a non-Rust consumer (e.g. aiwf's future Go reader) validates against. The prior
+/// `gap-report.v1.schema.json` is kept beside it as the historical v1 contract.
+pub const SCHEMA_RELPATH: &str = "schema/gap-report.v2.schema.json";
 
 /// A gap report: one property's graded verification outcome, written to `<prop>/report.json`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -71,14 +73,16 @@ pub enum Verdict {
 #[cfg_attr(test, derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum Substrate {
-    /// Dafny + Z3.
+    /// Dafny + Z3 (deductive verification).
     Dafny,
+    /// TLA+ / TLC (explicit-state model checking) — the M-0018 second substrate.
+    Tla,
 }
 
 impl Substrate {
     /// Every substrate loom knows. Hand-maintained; the `substrate_all_is_complete` tripwire
     /// test forces this list to be updated when a variant is added.
-    pub const ALL: &'static [Substrate] = &[Substrate::Dafny];
+    pub const ALL: &'static [Substrate] = &[Substrate::Dafny, Substrate::Tla];
 
     /// Parse a `substrate:` token using the same vocabulary serde emits — the single source of
     /// the wire spelling (C1). An unknown token yields `None` (rejected, never silently
@@ -206,7 +210,57 @@ impl GapReport {
         s.push('\n');
         s
     }
+
+    /// Read a gap report, **version-gating first** (the M-0016 reader contract, made mechanical):
+    /// a consumer dispatches on `schema_version` and refuses a version it was not built for,
+    /// rather than deserializing a foreign shape against its own types. Only [`SCHEMA_VERSION`]
+    /// is accepted; any other version is an [`ReadError::UnsupportedVersion`].
+    pub fn from_json(json: &str) -> Result<GapReport, ReadError> {
+        // Peek only the version, ignoring every other field, before committing to the full shape.
+        let peek: SchemaPeek = serde_json::from_str(json).map_err(ReadError::Malformed)?;
+        if peek.schema_version != SCHEMA_VERSION {
+            return Err(ReadError::UnsupportedVersion {
+                found: peek.schema_version,
+                expected: SCHEMA_VERSION,
+            });
+        }
+        serde_json::from_str(json).map_err(ReadError::Malformed)
+    }
 }
+
+/// Just the version field, read first so the reader can version-gate before deserializing the
+/// full (strict, `deny_unknown_fields`) report shape.
+#[derive(Deserialize)]
+struct SchemaPeek {
+    schema_version: String,
+}
+
+/// Why reading a gap report failed. Distinguishes an unsupported schema version (the reader
+/// refuses to guess at a foreign shape) from malformed JSON.
+#[derive(Debug)]
+pub enum ReadError {
+    /// The report's `schema_version` is not the one this build reads.
+    UnsupportedVersion {
+        found: String,
+        expected: &'static str,
+    },
+    /// The JSON did not parse, or did not match the report shape.
+    Malformed(serde_json::Error),
+}
+
+impl std::fmt::Display for ReadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ReadError::UnsupportedVersion { found, expected } => write!(
+                f,
+                "gap report schema_version {found:?} is not supported by this reader (expects {expected:?})"
+            ),
+            ReadError::Malformed(e) => write!(f, "malformed gap report: {e}"),
+        }
+    }
+}
+
+impl std::error::Error for ReadError {}
 
 #[cfg(test)]
 mod tests {
@@ -409,6 +463,7 @@ mod tests {
             // Exhaustive match: a new variant forces an arm here (and thus into ALL below).
             match s {
                 Substrate::Dafny => {}
+                Substrate::Tla => {}
             }
             assert!(
                 Substrate::ALL.contains(&s),
@@ -416,12 +471,70 @@ mod tests {
             );
         }
         assert_listed(Substrate::Dafny);
+        assert_listed(Substrate::Tla);
     }
 
     #[test]
     fn from_token_matches_the_serde_vocabulary() {
         assert_eq!(Substrate::from_token("dafny"), Some(Substrate::Dafny));
+        assert_eq!(Substrate::from_token("tla"), Some(Substrate::Tla));
         assert!(Substrate::from_token("coq").is_none());
         assert!(Substrate::from_token("").is_none());
+    }
+
+    #[test]
+    fn schema_version_is_two_after_the_second_substrate_migration() {
+        // M-0018/AC-4 — adding Substrate::Tla grows the schema's substrate enum, a Contract-2
+        // change taken via a deliberate version bump (path A). The published path must track it.
+        assert_eq!(SCHEMA_VERSION, "2");
+        assert!(SCHEMA_RELPATH.contains("v2."));
+    }
+
+    #[test]
+    fn a_reader_refuses_a_report_whose_schema_version_it_does_not_know() {
+        // M-0018/AC-4 — the version gate is real: a reader dispatches on schema_version first and
+        // refuses a version it was not built for (the M-0016 reader contract, made mechanical).
+        let current = GapReport::pending("p").to_canonical_json();
+        assert!(
+            GapReport::from_json(&current).is_ok(),
+            "current version reads"
+        );
+
+        // A report claiming the old v1 schema is refused by this v2 reader.
+        let v1 = current.replace("\"schema_version\": \"2\"", "\"schema_version\": \"1\"");
+        match GapReport::from_json(&v1) {
+            Err(ReadError::UnsupportedVersion { found, expected }) => {
+                assert_eq!(found, "1");
+                assert_eq!(expected, "2");
+            }
+            other => panic!("expected UnsupportedVersion, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_reader_rejects_malformed_json() {
+        assert!(matches!(
+            GapReport::from_json("{ not json"),
+            Err(ReadError::Malformed(_))
+        ));
+    }
+
+    #[test]
+    fn read_errors_render_self_explaining_messages() {
+        // Both arms are public-API surface (a consumer logs these); pin their Display.
+        let unsupported = ReadError::UnsupportedVersion {
+            found: "1".to_string(),
+            expected: "2",
+        }
+        .to_string();
+        assert!(
+            unsupported.contains("schema_version") && unsupported.contains("not supported"),
+            "names the version problem: {unsupported:?}"
+        );
+        let malformed = GapReport::from_json("{ not json").unwrap_err().to_string();
+        assert!(
+            malformed.contains("malformed gap report"),
+            "names the parse problem: {malformed:?}"
+        );
     }
 }
