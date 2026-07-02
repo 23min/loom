@@ -1,7 +1,7 @@
 ---
 id: M-0016
 title: Stand up the loom-light overlay, runner, and frozen contracts
-status: draft
+status: in_progress
 parent: E-0005
 tdd: required
 acs:
