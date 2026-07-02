@@ -11,7 +11,7 @@ acs:
       tdd_phase: done
     - id: AC-2
       title: make loom is opt-in, off the default pipeline
-      status: open
+      status: met
       tdd_phase: done
     - id: AC-3
       title: Gap-report schema frozen and reader-equivalent
