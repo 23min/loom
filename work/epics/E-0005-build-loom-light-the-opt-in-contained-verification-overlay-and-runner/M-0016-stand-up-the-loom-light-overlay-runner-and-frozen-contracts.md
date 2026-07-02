@@ -9,6 +9,10 @@ acs:
       title: Overlay contained and removable-without-trace
       status: open
       tdd_phase: red
+    - id: AC-2
+      title: make loom is opt-in, off the default pipeline
+      status: open
+      tdd_phase: red
 ---
 
 ## Goal
@@ -16,4 +20,6 @@ acs:
 ## Acceptance criteria
 
 ### AC-1 — Overlay contained and removable-without-trace
+
+### AC-2 — make loom is opt-in, off the default pipeline
 
