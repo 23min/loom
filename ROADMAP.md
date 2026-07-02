@@ -77,5 +77,7 @@ observation whether to build the thin loom-light tool.
 
 Turn the E-0004 qualified proceed (`D-0006`) into a real, growable tool: an **opt-in verification overlay** a downstream repo adds under one removable directory, plus an external **runner** (living in this loom repo) that verifies umbrellas and emits schema-stable gap reports — architected **contracts-first** so the path from PoC to product is *additive, never a rewrite*.
 
-_No milestones yet._
+| Milestone | Title | Status |
+|---|---|---|
+| M-0016 | Stand up the loom-light overlay, runner, and frozen contracts | draft |
 
