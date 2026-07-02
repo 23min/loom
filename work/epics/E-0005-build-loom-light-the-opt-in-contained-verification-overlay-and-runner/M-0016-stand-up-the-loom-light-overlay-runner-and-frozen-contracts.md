@@ -28,7 +28,7 @@ acs:
     - id: AC-6
       title: Seed properties verify; at-risk gap surfaces
       status: open
-      tdd_phase: green
+      tdd_phase: done
 ---
 ## Goal
 
