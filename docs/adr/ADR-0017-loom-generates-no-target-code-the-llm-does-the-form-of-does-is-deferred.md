@@ -1,7 +1,7 @@
 ---
 id: ADR-0017
 title: loom generates no target code; the LLM does; the form of does is deferred
-status: proposed
+status: accepted
 ---
 # ADR-0017 — loom generates no target code; the LLM does; the form of does is deferred
 
