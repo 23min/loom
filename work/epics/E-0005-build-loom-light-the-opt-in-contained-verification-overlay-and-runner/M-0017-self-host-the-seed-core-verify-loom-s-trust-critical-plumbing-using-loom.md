@@ -70,7 +70,7 @@ Expressing loom's own three properties required **no change** to any of the five
 ## Design notes
 
 - The three models mirror the M-0016 aiwf seed's shape (a small Dafny state-machine / totality proof), so they exercise the same runner path the aiwf seed did — a from-the-inside test of the backend seam under loom's own properties.
-- Model↔source binding reuses the gap-report `subject` fields (`repo` / `ref` / `path` / `symbol`) frozen in M-0016; self-host is the first real exercise of that binding on loom's own code, so it also validates the symbol-not-line-number pinning discipline.
+- Model↔source binding reuses the gap-report `subject` fields (`repo` / `ref` / `path` / `symbol`) frozen in M-0016; self-host is the first real exercise of that binding on loom's own code — it carries a symbol-based pin (not a line number) end to end into the report. Honest scope: nothing yet *resolves* the symbol against source, and the ref (`v0.1.0`) is a pre-release moving target, so the durable anchor is the symbol by convention, not a released tag. Symbol resolution / tag-pinning is a later concern.
 - Reproducibility (G1) and schema equivalence (D2) stay as Rust tests. If later wanted, a G1 "same-inputs → byte-identical report" property is better self-hosted as a runner-level check than as a Dafny model — noted, not scoped here.
 
 ## Out of scope
@@ -86,20 +86,85 @@ Expressing loom's own three properties required **no change** to any of the five
 
 ## Work log
 
-_(filled during implementation)_
+The self-host overlay, the three Dafny models, and the `subject` wiring landed as one `feat`
+implementation commit (`216bb6e`); the wrap review added two corrective edits (folded into the
+same commit — see Reviewer notes). Per-AC TDD phase timelines are in `aiwf history M-0017/AC-<N>`.
+
+- **AC-1 — overlay contained + opt-in** (met): repo-root `loom/` overlay (three properties) +
+  a `cargo loom` alias (`.cargo/config.toml`) off the default cargo graph; not a workspace
+  member, removable without trace. `216bb6e`.
+- **AC-2 — dispatch totality** (met): `loom/dispatch-totality/model.dfy` proves every substrate
+  routes to a backend that *verifies* (`Verifies(Dispatch(s))` ∀ s); pinned to
+  `loom::backend::dispatch`. Runner reports `proved`. `216bb6e`.
+- **AC-3 — parser totality** (met): `loom/parser-totality/model.dfy` proves parse is a total
+  partition (Ok / Missing / Duplicate / Unknown), each branch reachable; pinned to
+  `loom::umbrella::parse`. `proved`. `216bb6e`.
+- **AC-4 — atomic crash-safety** (met): `loom/atomic-crash-safety/model.dfy` proves the dest is
+  fully-old/absent or fully-new at every crash phase, never torn; pinned to `loom::atomic`.
+  `proved`. `216bb6e`.
+- **AC-5 — frozen contracts hold from the inside** (met): the umbrella parser grew additive
+  `subject-*` fields and the runner populates `GapReport.subject` — with **zero change** to any
+  of the five frozen contracts (the `schema_is_frozen` test stays byte-identical). Each
+  self-host report records its pinned symbol + version. `216bb6e`.
 
 ## Decisions made during implementation
 
-_(filled during implementation)_
+No new decision entities were opened. The milestone realizes decisions already on record —
+ADR-0017 (loom generates no target code / no Rust→Dafny extraction; a model mirrors its subject
+by reference), the M-0016 frozen contracts, and this spec's Context scope-narrowing (self-host
+the modelable three; keep D2/G1 as the Rust tests M-0016 carries). Three implementation choices,
+all within the ACs' stated latitude, are recorded here rather than as separate entities:
+
+- **Overlay at repo-root `loom/`** — mirrors `examples/seed-downstream/loom/`, and being a
+  non-member sibling of `crates/` keeps it off the cargo build graph by construction (AC-1
+  containment holds structurally).
+- **Opt-in entry is a cargo alias (`cargo loom`)**, not a Makefile — idiomatic for this Rust
+  workspace; AC-1 explicitly permits either.
+- **Subject declared via additive `subject-*` umbrella fields** — reuses the frozen `Subject`
+  schema (no Contract 2 change) and the umbrella's existing line-scan format (no Contract 3
+  change); partial/duplicate declarations are typed rejections (B2), never a half-populated
+  subject.
 
 ## Validation
 
-_(filled at wrap)_
+- `cargo fmt --check` clean; `cargo clippy --all-targets -- -D warnings` clean; `cargo build` green.
+- `cargo test`: **62 tests pass** (M-0016's 47 + 15 for M-0017: 9 `self_host` integration + 6
+  new `umbrella` subject-parsing unit tests), incl. the three Dafny-backed self-host verdict
+  tests (Dafny 4.9.0 on PATH). M-0016's `schema_is_frozen` and `verify_seed` reproducibility
+  pass unchanged — the frozen contracts did not move.
+- All three models `dafny verify --cores:1` clean (1 / 2 / 2 obligations). Each was
+  vacuity-checked at review by falsifying a postcondition and confirming Dafny rejects it.
+- End-to-end: `cargo loom` verifies the overlay to 3× `proved`, each report carrying the pinned
+  `subject` (repo/ref/path/symbol) and a full audit trail.
 
 ## Deferrals
 
-_(filled at wrap)_
+None. No work was punted — the milestone's scope was the modelable three (D2/G1 stay as the
+existing M-0016 Rust tests, recorded in this spec's Out of scope, not a deferral). The M-0016
+determinism gap (G-0009, wall-clock vs `--resource-limit`) covers the backend generally and is
+not re-opened; the self-host models are trivial and verify deterministically under `--cores:1`.
 
 ## Reviewer notes
 
-_(filled at wrap)_
+Two-lens wrap review ran over the full (uncommitted) change-set from fresh-context reviewers.
+
+- **Code lens → APPROVE.** The headline risk — a vacuous "proves nothing" model — was measured
+  false for all three lowerings (a falsified `ensures` was rejected by Dafny in every case).
+  Zero change to the five frozen contracts confirmed (schema byte-identical; M-0016 tests green);
+  the `unique_field` refactor is behavior-preserving on the frozen substrate-parse edges. Two
+  non-blocking nits fixed in this milestone: (1) a Rust test now pins the "duplicate detected
+  before the empty-value filter" ordering directly (was proved only by reference in the Dafny
+  model); (2) — see the design lens's C1 point below.
+- **Design lens → KEEP** on the subject-binding data-model. The flat additive `subject-*` fields
+  reuse the frozen `Subject` and validate their boundary at the right size; AC-5's core claim is
+  genuinely met and mechanically pinned. One real C1 drift fixed: `atomic-crash-safety`'s prose
+  header named `write_atomic` while the canonical machine field (per AC-4) is `loom::atomic` —
+  the prose now defers to the `subject-*` fields as the source of truth.
+- **Documented scope boundaries (deliberate, not defects):** (a) the `parser-totality` model is
+  pinned to the v0.1.0 substrate-decision core and does **not** model the `subject-*` parsing this
+  milestone added to the same `parse` — that extension is total by Rust construction and covered
+  by six new Rust unit tests. (b) The subject pin is a *reference* pin: nothing resolves the
+  symbol against source and `v0.1.0` is a pre-release moving ref, so the durable anchor is the
+  symbol by convention (the design note was corrected to say so). A `proved` self-host report is
+  a claim about the Dafny lowering in `audit.inputs`, **not** a claim that the Rust `subject` is
+  verified directly (ADR-0017) — carried by the audit trail and the README honesty note.
