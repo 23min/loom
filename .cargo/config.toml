@@ -1,0 +1,9 @@
+# loom workspace cargo config.
+#
+# The `loom` alias is loom-on-loom's opt-in verification entry (M-0017/AC-1): `cargo loom`
+# runs the loom runner over the repo-root `loom/` self-host overlay. It is NEVER a
+# prerequisite of `cargo build` or `cargo test` — the default graph stays loom-free, and the
+# overlay is pure data (not a workspace member), so removing `loom/` leaves the pipeline
+# byte-identical. `cargo loom -- --prop <id>` scopes to a single property.
+[alias]
+loom = "run -p loom -- verify loom"

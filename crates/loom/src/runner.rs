@@ -90,6 +90,7 @@ fn report_for(p: &Property) -> io::Result<crate::report::GapReport> {
             };
             GapReport::verified(
                 &p.id,
+                umbrella.subject,
                 umbrella.substrate,
                 outcome.verdict,
                 outcome.gaps,

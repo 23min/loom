@@ -155,9 +155,12 @@ impl GapReport {
     }
 
     /// A parsed property that was routed to its backend and verified — `substrate` populated and
-    /// the graded `verdict`, `gaps`, and `audit` filled from the backend run (M-0016/AC-6).
+    /// the graded `verdict`, `gaps`, and `audit` filled from the backend run (M-0016/AC-6). The
+    /// `subject` is the pinned code the umbrella declared, or `None` when it declared none
+    /// (M-0017/AC-5).
     pub fn verified(
         property: &str,
+        subject: Option<Subject>,
         substrate: Substrate,
         verdict: Verdict,
         gaps: Vec<Gap>,
@@ -167,7 +170,7 @@ impl GapReport {
             schema_version: SCHEMA_VERSION.to_string(),
             property: property.to_string(),
             verdict,
-            subject: None,
+            subject,
             substrate: Some(substrate),
             gaps,
             audit,
