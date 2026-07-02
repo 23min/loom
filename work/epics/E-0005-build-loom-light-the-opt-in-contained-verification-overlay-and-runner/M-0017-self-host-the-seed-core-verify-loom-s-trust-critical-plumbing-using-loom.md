@@ -9,7 +9,7 @@ tdd: required
 acs:
     - id: AC-1
       title: Self-host overlay contained and opt-in
-      status: open
+      status: met
       tdd_phase: done
     - id: AC-2
       title: Substrate-dispatch totality self-hosts and verifies
