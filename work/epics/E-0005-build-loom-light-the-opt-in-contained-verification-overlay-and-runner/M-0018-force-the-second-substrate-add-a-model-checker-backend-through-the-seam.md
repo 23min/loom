@@ -22,7 +22,7 @@ acs:
     - id: AC-4
       title: Gap-report schema carries the second substrate, version-gated v1 to v2
       status: open
-      tdd_phase: green
+      tdd_phase: done
     - id: AC-5
       title: The model checker's nondeterminism is isolated and surfaced
       status: open
