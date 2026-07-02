@@ -18,7 +18,7 @@ acs:
     - id: AC-3
       title: A TLC counterexample surfaces as a category-(B) gap
       status: open
-      tdd_phase: green
+      tdd_phase: done
     - id: AC-4
       title: Gap-report schema carries the second substrate, version-gated v1 to v2
       status: open
