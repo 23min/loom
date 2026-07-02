@@ -1,7 +1,7 @@
 ---
 id: ADR-0001
 title: Rust as loom's implementation language
-status: proposed
+status: accepted
 ---
 # ADR-0001 — Rust as loom's implementation language
 
