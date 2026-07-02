@@ -71,3 +71,11 @@ observation whether to build the thin loom-light tool.
 | M-0014 | Turn the umbrella loop on the status-transition FSM | done |
 | M-0015 | Turn the loop on real string-based canonicalization | done |
 
+## E-0005 — Build loom-light: the opt-in, contained verification overlay and runner (proposed)
+
+### Goal
+
+Turn the E-0004 qualified proceed (`D-0006`) into a real, growable tool: an **opt-in verification overlay** a downstream repo adds under one removable directory, plus an external **runner** (living in this loom repo) that verifies umbrellas and emits schema-stable gap reports — architected **contracts-first** so the path from PoC to product is *additive, never a rewrite*.
+
+_No milestones yet._
+
