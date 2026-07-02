@@ -13,6 +13,10 @@ acs:
       title: make loom is opt-in, off the default pipeline
       status: open
       tdd_phase: red
+    - id: AC-3
+      title: Gap-report schema frozen and reader-equivalent
+      status: open
+      tdd_phase: red
 ---
 
 ## Goal
@@ -22,4 +26,6 @@ acs:
 ### AC-1 — Overlay contained and removable-without-trace
 
 ### AC-2 — make loom is opt-in, off the default pipeline
+
+### AC-3 — Gap-report schema frozen and reader-equivalent
 
