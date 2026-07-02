@@ -10,7 +10,7 @@ acs:
     - id: AC-1
       title: Model-checker substrate routes through the frozen runner/backend seam
       status: open
-      tdd_phase: red
+      tdd_phase: green
     - id: AC-2
       title: A TLA+ property verifies proved end to end via loom verify
       status: open
