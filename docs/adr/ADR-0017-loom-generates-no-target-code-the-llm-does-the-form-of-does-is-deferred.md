@@ -1,9 +1,9 @@
 ---
 id: ADR-0017
-title: loom-light generates no target code; the form of does is deferred
+title: loom generates no target code; the LLM does; the form of does is deferred
 status: proposed
 ---
-# ADR-0017 — loom generates no target code; the LLM does; the form of `does` is deferred
+# ADR-0017 — loom generates no target code; the LLM does; the form of does is deferred
 
 > **Date:** 2026-06-19 · revised 2026-07-02 · **Deciders:** project initial author; ratified during E-0005 planning.
 > **Related:** ADR-0001 (Rust impl) · ADR-0002 (Dafny verifier) · ADR-0003 (Python codegen — rejected) · ADR-0018 (spec↔implementation binding) · [`docs/research/loom-reach-ambition-and-scope.md`](../research/loom-reach-ambition-and-scope.md) · [`docs/loom-loop-poc.md`](../loom-loop-poc.md).
