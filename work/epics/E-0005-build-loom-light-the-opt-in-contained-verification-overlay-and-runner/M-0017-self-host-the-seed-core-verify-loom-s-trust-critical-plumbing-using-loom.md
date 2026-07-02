@@ -14,7 +14,7 @@ acs:
     - id: AC-2
       title: Substrate-dispatch totality self-hosts and verifies
       status: open
-      tdd_phase: green
+      tdd_phase: done
     - id: AC-3
       title: Umbrella-parser totality self-hosts and verifies
       status: open
