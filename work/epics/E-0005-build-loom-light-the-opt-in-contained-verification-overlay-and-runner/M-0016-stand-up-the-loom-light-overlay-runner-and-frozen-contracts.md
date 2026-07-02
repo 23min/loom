@@ -7,7 +7,7 @@ tdd: required
 acs:
     - id: AC-1
       title: Overlay contained and removable-without-trace
-      status: open
+      status: met
       tdd_phase: done
     - id: AC-2
       title: make loom is opt-in, off the default pipeline
