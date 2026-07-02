@@ -3,8 +3,10 @@ id: ADR-0003
 title: Python as the v0 target language for code generation
 status: proposed
 ---
-
 # ADR-0003 — Python as the v0 target language for code generation
+
+> **REJECTED — 2026-07-02, superseded by ADR-0017.** loom generates no target code (not Python or any language); code generation is the LLM's role. Retained for the historical record — its analysis stood for a codegen destination loom no longer has.
+
 
 > **Date:** 2026-05-22 · **Deciders:** project initial author; open for review.
 > **Related:** `PLAN.md` §4.4, §5.3; `docs/reference/verification-internals.md` §3.
