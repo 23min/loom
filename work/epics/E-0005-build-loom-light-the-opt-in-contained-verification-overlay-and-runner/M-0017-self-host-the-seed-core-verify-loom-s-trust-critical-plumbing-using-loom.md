@@ -10,7 +10,7 @@ acs:
     - id: AC-1
       title: Self-host overlay contained and opt-in
       status: open
-      tdd_phase: red
+      tdd_phase: green
     - id: AC-2
       title: Substrate-dispatch totality self-hosts and verifies
       status: open
